@@ -42,25 +42,23 @@ class SQLAlchemyLoguruHandler(logging.Handler):
 
 
 def _setup_sqlalchemy_logging():
-    """配置SQLAlchemy日志 - 仅写入文件，不输出到控制台"""
+    """配置SQLAlchemy日志 - 完全禁用"""
     # 获取SQLAlchemy的日志记录器
     sqlalchemy_logger = logging.getLogger("sqlalchemy.engine")
     
-    # 清除默认处理器
+    # 清除所有处理器
     sqlalchemy_logger.handlers.clear()
     
-    # 如果debug模式，将SQL日志写入文件（不显示在控制台）
-    if settings.debug:
-        sqlalchemy_logger.setLevel(logging.INFO)
-        handler = SQLAlchemyLoguruHandler()
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        sqlalchemy_logger.addHandler(handler)
-    else:
-        # 非debug模式完全禁用
-        sqlalchemy_logger.setLevel(logging.WARNING)
-    
-    # 禁止日志向上传播到root logger（避免重复输出到控制台）
+    # 完全禁用SQLAlchemy日志
+    sqlalchemy_logger.setLevel(logging.CRITICAL)
     sqlalchemy_logger.propagate = False
+    
+    # 同时禁用其他SQLAlchemy相关日志
+    for name in ["sqlalchemy", "sqlalchemy.pool", "sqlalchemy.dialects", "sqlalchemy.orm"]:
+        logger_obj = logging.getLogger(name)
+        logger_obj.handlers.clear()
+        logger_obj.setLevel(logging.CRITICAL)
+        logger_obj.propagate = False
 
 
 # 配置SQLAlchemy日志

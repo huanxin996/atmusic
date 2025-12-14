@@ -8,6 +8,7 @@ function playTimePage() {
             today: 0,
             target: 60,
             songDuration: 30,
+            source: 'recommend',  // recommend=每日推荐, discover=发现歌单
             running: false,
             logs: []
         },
@@ -59,8 +60,9 @@ function playTimePage() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        target_minutes: this.playTime.target,
-                        song_duration: this.playTime.songDuration
+                        target: this.playTime.target,
+                        songDuration: this.playTime.songDuration,
+                        source: this.playTime.source
                     })
                 });
                 const data = await response.json();

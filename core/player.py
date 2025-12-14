@@ -26,11 +26,15 @@ class MusicPlayer:
         await self.api.close()
     
     async def get_songs_from_recommend(self) -> List[Dict]:
-        """获取每日推荐歌曲"""
+        """获取每日推荐歌曲 - 支持v2和v3版本API返回格式"""
         try:
             result = await self.api.get_recommend_songs()
             if result.get("code") == 200:
-                songs = result.get("data", {}).get("dailySongs", [])
+                # v2版本返回 recommend 数组
+                songs = result.get("recommend", [])
+                # v3版本返回 data.dailySongs 数组（兼容）
+                if not songs:
+                    songs = result.get("data", {}).get("dailySongs", [])
                 return [{"id": str(s["id"]), "name": s["name"]} for s in songs]
         except Exception as e:
             logger.error(f"获取推荐歌曲失败: {str(e)}")
@@ -65,6 +69,66 @@ class MusicPlayer:
         except Exception as e:
             logger.error(f"获取用户歌单失败: {str(e)}")
         return []
+    
+    async def get_songs_from_discover_playlists(self, count: int = 500, cat: str = None) -> List[Dict]:
+        """
+        从发现歌单页面获取歌曲
+        
+        Args:
+            count: 需要的歌曲数量
+            cat: 歌单分类（如：华语、流行、摇滚等）
+            
+        Returns:
+            歌曲列表 [{id, name}, ...]
+        """
+        try:
+            # 获取发现页面的歌单列表
+            playlists = await self.api.get_discover_playlists_from_html(cat=cat, limit=35)
+            if not playlists:
+                logger.warning("未获取到发现歌单")
+                return []
+            
+            logger.info(f"从发现页面获取到 {len(playlists)} 个歌单")
+            
+            all_songs = []
+            used_song_ids = set()
+            
+            # 遍历歌单获取歌曲
+            for playlist in playlists:
+                if len(all_songs) >= count:
+                    break
+                    
+                playlist_id = playlist.get("id")
+                playlist_name = playlist.get("name", "未知歌单")
+                
+                try:
+                    songs = await self.get_songs_from_playlist(playlist_id)
+                    if songs:
+                        # 去重添加
+                        new_songs = []
+                        for song in songs:
+                            if song["id"] not in used_song_ids:
+                                used_song_ids.add(song["id"])
+                                new_songs.append(song)
+                        
+                        all_songs.extend(new_songs)
+                        logger.debug(f"从歌单 [{playlist_name}] 获取到 {len(new_songs)} 首新歌曲")
+                except Exception as e:
+                    logger.warning(f"获取歌单 [{playlist_name}] 歌曲失败: {e}")
+                    continue
+                
+                # 添加延迟避免请求过快
+                await asyncio.sleep(0.5)
+            
+            # 随机打乱顺序
+            random.shuffle(all_songs)
+            
+            logger.info(f"从发现歌单共获取 {len(all_songs)} 首歌曲")
+            return all_songs[:count]
+            
+        except Exception as e:
+            logger.error(f"从发现歌单获取歌曲失败: {e}")
+            return []
     
     async def play_song(self, song_id: str, source_id: str = "", duration: int = None, play_time: int = None) -> bool:
         """

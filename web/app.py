@@ -23,6 +23,10 @@ async def lifespan(app: FastAPI):
     # 初始化数据库
     await init_db()
     
+    # 恢复用户会话状态
+    from web.api import try_restore_session
+    await try_restore_session()
+    
     # 启动定时任务调度器
     scheduler = get_scheduler()
     scheduler.start()

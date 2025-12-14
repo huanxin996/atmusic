@@ -8,6 +8,7 @@ function playCountPage() {
             today: 0,
             target: 300,
             interval: 3,
+            source: 'recommend',  // recommend=每日推荐, discover=发现歌单
             running: false,
             logs: []
         },
@@ -59,8 +60,9 @@ function playCountPage() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        count: this.playCount.target,
-                        interval: this.playCount.interval
+                        target: this.playCount.target,
+                        interval: this.playCount.interval,
+                        source: this.playCount.source
                     })
                 });
                 const data = await response.json();

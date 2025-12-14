@@ -22,6 +22,7 @@ class User(Base):
     city = Column(Integer, default=0, comment="城市")
     gender = Column(Integer, default=0, comment="性别: 0-未知 1-男 2-女")
     birthday = Column(BigInteger, default=0, comment="生日时间戳")
+    create_time = Column(BigInteger, default=0, comment="账号创建时间戳")
     listen_songs = Column(Integer, default=0, comment="听歌总数")
     follows = Column(Integer, default=0, comment="关注数")
     followeds = Column(Integer, default=0, comment="粉丝数")
@@ -51,6 +52,7 @@ class User(Base):
             "city": self.city,
             "gender": self.gender,
             "birthday": self.birthday,
+            "create_time": self.create_time,
             "listen_songs": self.listen_songs,
             "follows": self.follows,
             "followeds": self.followeds,

@@ -13,6 +13,7 @@ from core.player import MusicPlayer
 from core.api import NetEaseAPI
 from core.sync import sync_all_user_data, check_and_sync_data, get_cached_playlists, get_cached_rankings
 from utils.logger import logger
+from utils.database import get_session
 from utils.session import (
     validate_session,
     save_user_session, get_user_session, get_current_session, get_all_users,
@@ -176,16 +177,17 @@ async def login_websocket(websocket: WebSocket):
                                     logger.info(f"登录成功，用户: {state.current_user.get('nickname')}")
                                     
                                     # 保存会话到数据库，包含浏览器标头
+                                    # 使用完整的 user_info 而不仅仅是 state.current_user
                                     browser_headers = api.get_current_headers()
                                     await save_user_session(
-                                        state.current_user["uid"], 
+                                        user_info["uid"], 
                                         state.cookies, 
-                                        state.current_user,
+                                        user_info,  # 保存完整用户信息
                                         browser_headers
                                     )
                                     
                                     # 后台同步用户数据（歌单、排行）
-                                    uid = state.current_user["uid"]
+                                    uid = user_info["uid"]
                                     asyncio.create_task(
                                         sync_all_user_data(uid, state.cookies, browser_headers)
                                     )
@@ -299,31 +301,32 @@ async def check_qr(key: str):
                 # 获取用户信息
                 api = NetEaseAPI(state.cookies)
                 try:
-                    user_result = await api.get_login_status()
-                    logger.debug(f"用户信息结果: {user_result}")
+                    # 获取完整用户信息
+                    user_info = await api.get_user_full_info()
                     
-                    if user_result.get("profile"):
-                        profile = user_result["profile"]
+                    if user_info.get("uid"):
                         state.current_user = {
-                            "uid": str(profile["userId"]),
-                            "nickname": profile["nickname"],
-                            "avatar_url": profile.get("avatarUrl", ""),
-                            "signature": profile.get("signature", ""),
-                            "vip_type": profile.get("vipType", 0),
-                            "level": profile.get("level", 0),
-                            "province": profile.get("province", 0),
-                            "city": profile.get("city", 0),
-                            "listen_songs": profile.get("listenSongs", 0)
+                            "uid": user_info["uid"],
+                            "nickname": user_info.get("nickname", "用户"),
+                            "avatar_url": user_info.get("avatar_url", ""),
+                            "signature": user_info.get("signature", ""),
+                            "vip_type": user_info.get("vip_type", 0),
+                            "level": user_info.get("level", 0),
+                            "province": user_info.get("province", 0),
+                            "city": user_info.get("city", 0),
+                            "listen_songs": user_info.get("listen_songs", 0),
+                            "follows": user_info.get("follows", 0),
+                            "followeds": user_info.get("followeds", 0)
                         }
                         result["user"] = state.current_user
                         logger.info(f"登录成功，用户: {state.current_user.get('nickname')}")
                         
-                        # 保存会话到数据库，包含浏览器标头
+                        # 保存会话到数据库，使用完整用户信息
                         browser_headers = api.get_current_headers()
                         await save_user_session(
-                            state.current_user["uid"], 
+                            user_info["uid"], 
                             state.cookies, 
-                            state.current_user,
+                            user_info,  # 保存完整用户信息
                             browser_headers
                         )
                     else:
@@ -353,12 +356,40 @@ async def login_with_cookies(req: LoginCookiesRequest):
     
     if result.get("valid"):
         state.cookies = req.cookies
-        state.current_user = result.get("user")
-        # 保存会话到数据库
+        
+        # 获取完整用户信息
+        api = NetEaseAPI(state.cookies)
+        try:
+            user_info = await api.get_user_full_info()
+            if user_info.get("uid"):
+                state.current_user = {
+                    "uid": user_info["uid"],
+                    "nickname": user_info.get("nickname", "用户"),
+                    "avatar_url": user_info.get("avatar_url", ""),
+                    "level": user_info.get("level", 0),
+                    "signature": user_info.get("signature", ""),
+                    "vip_type": user_info.get("vip_type", 0),
+                    "follows": user_info.get("follows", 0),
+                    "followeds": user_info.get("followeds", 0)
+                }
+                # 保存完整用户信息到数据库
+                browser_headers = api.get_current_headers()
+                await save_user_session(user_info["uid"], state.cookies, user_info, browser_headers)
+                
+                # 后台同步用户数据
+                asyncio.create_task(sync_all_user_data(user_info["uid"], state.cookies, browser_headers))
+                
+                return {"success": True, "user": state.current_user}
+        except Exception as e:
+            logger.warning(f"获取用户详情失败: {e}")
+            # 回退到基本信息
+            state.current_user = result.get("user", {})
+        finally:
+            await api.close()
+        
+        # 保存基本信息
         user_id = state.current_user.get("uid", "unknown")
         await save_user_session(user_id, state.cookies, state.current_user)
-        
-        # 后台同步用户数据
         asyncio.create_task(sync_all_user_data(user_id, state.cookies))
         
         return {"success": True, "user": state.current_user}
@@ -377,14 +408,41 @@ async def login_with_password(req: LoginPasswordRequest):
     
     if result.get("success"):
         state.cookies = result.get("cookies", "")
-        state.current_user = result.get("user")
-        logger.info(f"用户 {state.current_user.get('nickname', '')} 登录成功")
-        # 保存会话到数据库，包含浏览器标头
-        user_id = state.current_user.get("uid", "unknown")
         browser_headers = result.get("browser_headers")
-        await save_user_session(user_id, state.cookies, state.current_user, browser_headers)
         
-        # 后台同步用户数据
+        # 获取完整用户信息
+        api = NetEaseAPI(state.cookies, browser_headers=browser_headers)
+        try:
+            user_info = await api.get_user_full_info()
+            if user_info.get("uid"):
+                state.current_user = {
+                    "uid": user_info["uid"],
+                    "nickname": user_info.get("nickname", "用户"),
+                    "avatar_url": user_info.get("avatar_url", ""),
+                    "level": user_info.get("level", 0),
+                    "signature": user_info.get("signature", ""),
+                    "vip_type": user_info.get("vip_type", 0),
+                    "follows": user_info.get("follows", 0),
+                    "followeds": user_info.get("followeds", 0)
+                }
+                logger.info(f"用户 {state.current_user.get('nickname', '')} 登录成功")
+                
+                # 保存完整用户信息到数据库
+                await save_user_session(user_info["uid"], state.cookies, user_info, browser_headers)
+                
+                # 后台同步用户数据
+                asyncio.create_task(sync_all_user_data(user_info["uid"], state.cookies, browser_headers))
+                
+                return {"success": True, "user": state.current_user}
+        except Exception as e:
+            logger.warning(f"获取用户详情失败: {e}")
+            state.current_user = result.get("user", {})
+        finally:
+            await api.close()
+        
+        # 回退到基本信息
+        user_id = state.current_user.get("uid", "unknown")
+        await save_user_session(user_id, state.cookies, state.current_user, browser_headers)
         asyncio.create_task(sync_all_user_data(user_id, state.cookies, browser_headers))
         
         return {"success": True, "user": state.current_user}
@@ -726,6 +784,8 @@ async def broadcast_task_update(data: dict):
 class PlayCountTaskRequest(BaseModel):
     target: int = 300
     interval: int = 3
+    source: str = "recommend"  # recommend=每日推荐, discover=发现歌单
+    category: str = None  # 歌单分类（仅discover模式有效）
 
 
 @router.post("/task/play-count/start")
@@ -743,8 +803,18 @@ async def start_play_count_task(req: PlayCountTaskRequest):
         
         player = MusicPlayer(state.cookies)
         try:
-            # 获取推荐歌曲
-            songs = await player.get_songs_from_recommend()
+            # 根据来源获取歌曲
+            if req.source == "discover":
+                await broadcast_task_update({
+                    "type": "play_count",
+                    "count": task_state.today_play_count,
+                    "log": "正在从发现歌单获取歌曲...",
+                    "logType": "info"
+                })
+                songs = await player.get_songs_from_discover_playlists(count=req.target, cat=req.category)
+            else:
+                songs = await player.get_songs_from_recommend()
+            
             if not songs:
                 await broadcast_task_update({
                     "type": "play_count",
@@ -824,11 +894,36 @@ async def stop_play_count_task():
     return {"code": 200, "message": "任务已停止"}
 
 
+@router.get("/discover/playlists")
+async def get_discover_playlists(cat: str = None, order: str = "hot", limit: int = 35, offset: int = 0):
+    """获取发现歌单列表（从HTML解析）"""
+    if not state.cookies:
+        raise HTTPException(status_code=401, detail="请先登录")
+    
+    try:
+        api = NetEaseAPI(state.cookies)
+        playlists = await api.get_discover_playlists_from_html(cat=cat, order=order, limit=limit, offset=offset)
+        await api.close()
+        
+        return {
+            "code": 200,
+            "data": playlists
+        }
+    except Exception as e:
+        logger.error(f"获取发现歌单失败: {e}")
+        return {
+            "code": 500,
+            "message": str(e)
+        }
+
+
 # ==================== 刷歌时长任务API ====================
 
 class PlayTimeTaskRequest(BaseModel):
     target: int = 60  # 目标时长（分钟）
     songDuration: int = 30  # 单曲播放时长（秒）
+    source: str = "recommend"  # recommend=每日推荐, discover=发现歌单
+    category: str = None  # 歌单分类（仅discover模式有效）
 
 
 @router.post("/task/play-time/start")
@@ -848,7 +943,18 @@ async def start_play_time_task(req: PlayTimeTaskRequest):
         
         player = MusicPlayer(state.cookies)
         try:
-            songs = await player.get_songs_from_recommend()
+            # 根据来源获取歌曲
+            if req.source == "discover":
+                await broadcast_task_update({
+                    "type": "play_time",
+                    "seconds": task_state.today_play_time,
+                    "log": "正在从发现歌单获取歌曲...",
+                    "logType": "info"
+                })
+                songs = await player.get_songs_from_discover_playlists(count=500, cat=req.category)
+            else:
+                songs = await player.get_songs_from_recommend()
+            
             if not songs:
                 await broadcast_task_update({
                     "type": "play_time",
@@ -948,6 +1054,10 @@ async def switch_to_user(user_id: str):
     if await switch_user(user_id):
         state.cookies = session.get("cookies", "")
         state.current_user = session.get("user", {})
+        
+        # 后台异步更新用户信息
+        asyncio.create_task(_background_refresh_user(user_id))
+        
         return {"code": 200, "message": "切换成功", "user": state.current_user}
     
     raise HTTPException(status_code=500, detail="切换用户失败")
@@ -985,45 +1095,107 @@ async def validate_user(user_id: str):
 
 
 @router.get("/users/current")
-async def get_current_user_info():
-    """获取当前用户详细信息（带格式化）"""
+async def get_current_user_info(refresh: bool = False):
+    """
+    获取当前用户详细信息
+    
+    优先从数据库读取（快速响应），后台异步从API更新
+    
+    Args:
+        refresh: 是否强制刷新（等待API返回后再响应）
+    """
     if not state.cookies:
         raise HTTPException(status_code=401, detail="请先登录")
     
-    # 获取当前会话中保存的浏览器标头
+    # 获取当前用户ID
+    uid = state.current_user.get("uid") if state.current_user else None
+    
+    # 尝试从数据库获取用户信息（快速响应）
+    db_user = None
+    if uid:
+        try:
+            async with get_session() as session:
+                from sqlalchemy import select
+                from utils.models import User
+                result = await session.execute(
+                    select(User).where(User.uid == uid)
+                )
+                db_user = result.scalar_one_or_none()
+        except Exception as e:
+            logger.warning(f"从数据库获取用户失败: {e}")
+    
+    # 如果数据库有数据且不需要强制刷新，直接返回数据库数据
+    if db_user and not refresh:
+        # 获取歌单数量：优先从User表，若为0则从Playlist表统计
+        playlist_count = db_user.playlist_count or 0
+        if playlist_count == 0:
+            try:
+                async with get_session() as session:
+                    from sqlalchemy import select, func
+                    from utils.models import Playlist
+                    result = await session.execute(
+                        select(func.count()).select_from(Playlist).where(Playlist.user_uid == uid)
+                    )
+                    playlist_count = result.scalar() or 0
+            except Exception as e:
+                logger.warning(f"从Playlist表获取歌单数量失败: {e}")
+        
+        formatted = {
+            "uid": db_user.uid,
+            "nickname": db_user.nickname or "用户",
+            "avatar_url": db_user.avatar_url or "",
+            "signature": db_user.signature or "",
+            "vip_type": db_user.vip_type or 0,
+            "level": db_user.level or 0,
+            "location": get_location(db_user.province or 0, db_user.city or 0),
+            "province": db_user.province or 0,
+            "city": db_user.city or 0,
+            "birthday": db_user.birthday or 0,
+            "gender": db_user.gender or 0,
+            "create_time": db_user.create_time or 0,
+            "listen_songs": db_user.listen_songs or 0,
+            "follows": db_user.follows or 0,
+            "followeds": db_user.followeds or 0,
+            "playlist_count": playlist_count,
+            "event_count": db_user.event_count or 0,
+            "create_days": db_user.create_days or 0,
+            "last_sync": db_user.last_sync.isoformat() if db_user.last_sync else None
+        }
+        
+        # 后台异步更新用户信息（不阻塞响应）
+        asyncio.create_task(_background_refresh_user(uid))
+        
+        return {"code": 200, "data": formatted, "source": "database"}
+    
+    # 需要从API获取（首次登录或强制刷新）
     current_session = await get_current_session()
     browser_headers = current_session.get("browser_headers") if current_session else None
     
     api = NetEaseAPI(state.cookies, browser_headers=browser_headers)
     try:
-        result = await api.get_login_status()
+        # 使用完整信息获取方法
+        user_info = await api.get_user_full_info()
         
-        if result.get("code") == 200:
-            profile = result.get("profile", {})
-            account = result.get("account", {})
-            
-            # 格式化用户信息
+        if user_info.get("uid"):
             formatted = {
-                "uid": str(profile.get("userId", account.get("id", ""))),
-                "nickname": profile.get("nickname", "用户"),
-                "avatar_url": profile.get("avatarUrl", ""),
-                "signature": profile.get("signature", ""),
-                "vip_type": profile.get("vipType", 0),
-                "level": account.get("level", 0) if account else 0,
-                "location": get_location(profile.get("province", 0), profile.get("city", 0)),
-                "province": profile.get("province", 0),
-                "city": profile.get("city", 0),
-                "birthday": profile.get("birthday", 0),
-                "gender": profile.get("gender", 0),  # 0-未知 1-男 2-女
-                "create_time": timestamp_to_date(profile.get("createTime", 0)),
-                "create_timestamp": profile.get("createTime", 0),
-                "listen_songs": profile.get("listenSongs", 0),
-                "follows": profile.get("follows", 0),
-                "followeds": profile.get("followeds", 0),
-                "playlist_count": profile.get("playlistCount", 0),
-                "event_count": profile.get("eventCount", 0),
-                "raw_profile": profile,
-                "raw_account": account
+                "uid": user_info["uid"],
+                "nickname": user_info.get("nickname", "用户"),
+                "avatar_url": user_info.get("avatar_url", ""),
+                "signature": user_info.get("signature", ""),
+                "vip_type": user_info.get("vip_type", 0),
+                "level": user_info.get("level", 0),
+                "location": get_location(user_info.get("province", 0), user_info.get("city", 0)),
+                "province": user_info.get("province", 0),
+                "city": user_info.get("city", 0),
+                "birthday": user_info.get("birthday", 0),
+                "gender": user_info.get("gender", 0),
+                "create_time": user_info.get("create_time", 0),
+                "listen_songs": user_info.get("listen_songs", 0),
+                "follows": user_info.get("follows", 0),
+                "followeds": user_info.get("followeds", 0),
+                "playlist_count": user_info.get("playlist_count", 0),
+                "event_count": user_info.get("event_count", 0),
+                "create_days": user_info.get("create_days", 0)
             }
             
             # 更新本地缓存
@@ -1036,7 +1208,10 @@ async def get_current_user_info():
                 "level": formatted["level"]
             }
             
-            return {"code": 200, "data": formatted}
+            # 更新数据库
+            await update_user_info(formatted["uid"], user_info)
+            
+            return {"code": 200, "data": formatted, "source": "api"}
         
         raise HTTPException(status_code=401, detail="获取用户信息失败")
     except HTTPException:
@@ -1048,13 +1223,72 @@ async def get_current_user_info():
         await api.close()
 
 
-@router.get("/users/current/html-info")
-async def get_current_user_html_info():
-    """
-    从网页HTML解析当前用户详细信息
-    通过解析 https://music.163.com/user/home?id=xxx 页面获取更详细的用户信息
-    包括等级、累计听歌数、关注/粉丝数等
-    """
+async def _background_refresh_user(uid: str):
+    """后台异步刷新用户信息"""
+    try:
+        current_session = await get_current_session()
+        browser_headers = current_session.get("browser_headers") if current_session else None
+        
+        api = NetEaseAPI(state.cookies, browser_headers=browser_headers)
+        try:
+            user_info = await api.get_user_full_info(uid)
+            if user_info.get("uid"):
+                # 同步歌单数据并获取准确的歌单数量
+                try:
+                    from core.player import MusicPlayer
+                    player = MusicPlayer(api)
+                    playlists = await player.get_user_playlists(uid)
+                    # 使用实际歌单数量覆盖
+                    user_info["playlist_count"] = len(playlists) if playlists else user_info.get("playlist_count", 0)
+                except Exception as e:
+                    logger.debug(f"同步歌单失败: {e}")
+                
+                await update_user_info(uid, user_info)
+                logger.info(f"后台更新用户信息成功: {user_info.get('nickname')} 歌单:{user_info.get('playlist_count')}")
+        finally:
+            await api.close()
+    except Exception as e:
+        logger.warning(f"后台更新用户信息失败: {e}")
+
+
+# ==================== 用户等级API ====================
+
+@router.get("/users/current/level")
+async def get_current_user_level():
+    """获取当前用户的等级信息"""
+    if not state.cookies or not state.current_user:
+        raise HTTPException(status_code=401, detail="请先登录")
+    
+    api = NetEaseAPI(state.cookies)
+    try:
+        result = await api.get_user_level()
+        if result.get("code") == 200:
+            data = result.get("data", {})
+            return {
+                "code": 200,
+                "data": {
+                    "level": data.get("level", 0),
+                    "progress": data.get("progress", 0),
+                    "now_play_count": data.get("nowPlayCount", 0),
+                    "next_play_count": data.get("nextPlayCount", 0),
+                    "now_login_count": data.get("nowLoginCount", 0),
+                    "next_login_count": data.get("nextLoginCount", 0),
+                    "info": data.get("info", "")
+                }
+            }
+        return {"code": result.get("code", 500), "message": "获取等级信息失败"}
+    except Exception as e:
+        logger.error(f"获取用户等级失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        await api.close()
+
+
+# ==================== 用户社交API ====================
+
+@router.get("/users/current/events")
+async def get_current_user_events(lasttime: int = -1, limit: int = 30):
+    """获取当前用户的动态列表"""
     if not state.cookies or not state.current_user:
         raise HTTPException(status_code=401, detail="请先登录")
     
@@ -1062,65 +1296,63 @@ async def get_current_user_html_info():
     if not uid:
         raise HTTPException(status_code=400, detail="用户ID无效")
     
-    # 获取当前会话中保存的浏览器标头
     current_session = await get_current_session()
     browser_headers = current_session.get("browser_headers") if current_session else None
     
     api = NetEaseAPI(state.cookies, browser_headers=browser_headers)
     try:
-        html_info = await api.get_user_detail_from_html(uid)
-        
-        if html_info.get("error"):
-            raise HTTPException(status_code=500, detail=html_info.get("error"))
-        
-        return {
-            "code": 200,
-            "data": html_info,
-            "source": "html",
-            "url": f"https://music.163.com/user/home?id={uid}"
-        }
-    except HTTPException:
-        raise
+        result = await api.get_user_events(uid, lasttime, limit)
+        return {"code": 200, "data": result}
     except Exception as e:
-        logger.error(f"从HTML解析用户信息失败: {e}")
+        logger.error(f"获取用户动态失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         await api.close()
 
 
-@router.get("/users/{user_id}/html-info")
-async def get_user_html_info_by_id(user_id: str):
-    """
-    从网页HTML解析指定用户的详细信息
-    通过解析 https://music.163.com/user/home?id=xxx 页面获取用户信息
-    
-    Args:
-        user_id: 用户ID
-    """
-    if not state.cookies:
+@router.get("/users/current/follows")
+async def get_current_user_follows(offset: int = 0, limit: int = 30):
+    """获取当前用户的关注列表"""
+    if not state.cookies or not state.current_user:
         raise HTTPException(status_code=401, detail="请先登录")
     
-    # 获取当前会话中保存的浏览器标头
+    uid = state.current_user.get("uid", "")
+    if not uid:
+        raise HTTPException(status_code=400, detail="用户ID无效")
+    
     current_session = await get_current_session()
     browser_headers = current_session.get("browser_headers") if current_session else None
     
     api = NetEaseAPI(state.cookies, browser_headers=browser_headers)
     try:
-        html_info = await api.get_user_detail_from_html(user_id)
-        
-        if html_info.get("error"):
-            raise HTTPException(status_code=500, detail=html_info.get("error"))
-        
-        return {
-            "code": 200,
-            "data": html_info,
-            "source": "html",
-            "url": f"https://music.163.com/user/home?id={user_id}"
-        }
-    except HTTPException:
-        raise
+        result = await api.get_user_follows(uid, offset, limit)
+        return {"code": 200, "data": result}
     except Exception as e:
-        logger.error(f"从HTML解析用户信息失败: {e}")
+        logger.error(f"获取关注列表失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        await api.close()
+
+
+@router.get("/users/current/followeds")
+async def get_current_user_followeds(offset: int = 0, limit: int = 30):
+    """获取当前用户的粉丝列表"""
+    if not state.cookies or not state.current_user:
+        raise HTTPException(status_code=401, detail="请先登录")
+    
+    uid = state.current_user.get("uid", "")
+    if not uid:
+        raise HTTPException(status_code=400, detail="用户ID无效")
+    
+    current_session = await get_current_session()
+    browser_headers = current_session.get("browser_headers") if current_session else None
+    
+    api = NetEaseAPI(state.cookies, browser_headers=browser_headers)
+    try:
+        result = await api.get_user_followeds(uid, offset, limit)
+        return {"code": 200, "data": result}
+    except Exception as e:
+        logger.error(f"获取粉丝列表失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         await api.close()

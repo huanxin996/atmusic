@@ -50,34 +50,54 @@ async def save_user_session(
                 existing_user.cookies = cookies
                 existing_user.nickname = user_data.get("nickname", existing_user.nickname)
                 existing_user.avatar_url = user_data.get("avatar_url", existing_user.avatar_url)
+                existing_user.background_url = user_data.get("background_url", existing_user.background_url)
                 existing_user.signature = user_data.get("signature", existing_user.signature or "")
                 existing_user.vip_type = user_data.get("vip_type", existing_user.vip_type or 0)
                 existing_user.level = user_data.get("level", existing_user.level or 0)
                 existing_user.province = user_data.get("province", existing_user.province or 0)
                 existing_user.city = user_data.get("city", existing_user.city or 0)
+                existing_user.gender = user_data.get("gender", existing_user.gender or 0)
+                existing_user.birthday = user_data.get("birthday", existing_user.birthday or 0)
+                existing_user.create_time = user_data.get("create_time", existing_user.create_time or 0)
                 existing_user.listen_songs = user_data.get("listen_songs", existing_user.listen_songs or 0)
+                existing_user.follows = user_data.get("follows", existing_user.follows or 0)
+                existing_user.followeds = user_data.get("followeds", existing_user.followeds or 0)
+                existing_user.event_count = user_data.get("event_count", existing_user.event_count or 0)
+                existing_user.playlist_count = user_data.get("playlist_count", existing_user.playlist_count or 0)
+                existing_user.create_days = user_data.get("create_days", existing_user.create_days or 0)
                 existing_user.browser_headers = browser_headers or existing_user.browser_headers
                 existing_user.is_active = True
                 if set_current:
                     existing_user.is_current = True
                 existing_user.last_login = datetime.now()
+                existing_user.last_sync = datetime.now()
             else:
                 # 创建新用户
                 new_user = User(
                     uid=user_id,
                     nickname=user_data.get("nickname", "用户"),
                     avatar_url=user_data.get("avatar_url", ""),
+                    background_url=user_data.get("background_url", ""),
                     signature=user_data.get("signature", ""),
                     vip_type=user_data.get("vip_type", 0),
                     level=user_data.get("level", 0),
                     province=user_data.get("province", 0),
                     city=user_data.get("city", 0),
+                    gender=user_data.get("gender", 0),
+                    birthday=user_data.get("birthday", 0),
+                    create_time=user_data.get("create_time", 0),
                     listen_songs=user_data.get("listen_songs", 0),
+                    follows=user_data.get("follows", 0),
+                    followeds=user_data.get("followeds", 0),
+                    event_count=user_data.get("event_count", 0),
+                    playlist_count=user_data.get("playlist_count", 0),
+                    create_days=user_data.get("create_days", 0),
                     cookies=cookies,
                     browser_headers=browser_headers,
                     is_active=True,
                     is_current=set_current,
-                    last_login=datetime.now()
+                    last_login=datetime.now(),
+                    last_sync=datetime.now()
                 )
                 session.add(new_user)
             
@@ -321,14 +341,45 @@ async def update_user_info(user_id: str, user_info: Dict[str, Any]) -> bool:
             if not user:
                 return False
             
-            user.nickname = user_info.get("nickname", user.nickname)
-            user.avatar_url = user_info.get("avatar_url", user.avatar_url)
-            user.signature = user_info.get("signature", user.signature)
-            user.vip_type = user_info.get("vip_type", user.vip_type)
-            user.level = user_info.get("level", user.level)
-            user.province = user_info.get("province", user.province)
-            user.city = user_info.get("city", user.city)
-            user.listen_songs = user_info.get("listen_songs", user.listen_songs)
+            # 更新所有用户信息字段
+            if "nickname" in user_info:
+                user.nickname = user_info["nickname"]
+            if "avatar_url" in user_info:
+                user.avatar_url = user_info["avatar_url"]
+            if "background_url" in user_info:
+                user.background_url = user_info["background_url"]
+            if "signature" in user_info:
+                user.signature = user_info["signature"]
+            if "vip_type" in user_info:
+                user.vip_type = user_info["vip_type"]
+            if "level" in user_info:
+                user.level = user_info["level"]
+            if "province" in user_info:
+                user.province = user_info["province"]
+            if "city" in user_info:
+                user.city = user_info["city"]
+            if "gender" in user_info:
+                user.gender = user_info["gender"]
+            if "birthday" in user_info:
+                user.birthday = user_info["birthday"]
+            if "create_time" in user_info:
+                user.create_time = user_info["create_time"]
+            if "listen_songs" in user_info:
+                user.listen_songs = user_info["listen_songs"]
+            if "follows" in user_info:
+                user.follows = user_info["follows"]
+            if "followeds" in user_info:
+                user.followeds = user_info["followeds"]
+            if "event_count" in user_info:
+                user.event_count = user_info["event_count"]
+            if "playlist_count" in user_info:
+                user.playlist_count = user_info["playlist_count"]
+            if "create_days" in user_info:
+                user.create_days = user_info["create_days"]
+            
+            # 更新同步时间
+            from datetime import datetime
+            user.last_sync = datetime.now()
             
             await session.commit()
             return True

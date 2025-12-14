@@ -338,11 +338,33 @@ class NetEaseAPI:
         url = f"{self.BASE_URL}/weapi/v1/user/detail/{uid}"
         return await self._request("POST", url, {})
     
+    async def get_user_level(self) -> Dict[str, Any]:
+        """
+        获取当前用户等级信息
+        
+        Returns:
+            {
+                "code": 200,
+                "data": {
+                    "userId": xxx,
+                    "level": 9,
+                    "progress": 0.70225,
+                    "nowPlayCount": 8427,
+                    "nextPlayCount": 12000,
+                    "nowLoginCount": 350,
+                    "nextLoginCount": 350,
+                    "info": "..."
+                }
+            }
+        """
+        url = f"{self.BASE_URL}/weapi/user/level"
+        return await self._request("POST", url, {})
+    
     # ==================== 歌曲相关 ====================
     
     async def get_recommend_songs(self) -> Dict[str, Any]:
-        """获取每日推荐歌曲"""
-        url = f"{self.BASE_URL}/weapi/v3/discovery/recommend/songs"
+        """获取每日推荐歌曲 - 使用v2版本API"""
+        url = f"{self.BASE_URL}/weapi/v2/discovery/recommend/songs"
         return await self._request("POST", url, {})
     
     async def get_playlist_detail(self, playlist_id: str) -> Dict[str, Any]:
@@ -550,136 +572,84 @@ class NetEaseAPI:
         
         return result
     
-    async def get_user_detail_from_html(self, uid: str) -> Dict[str, Any]:
+    async def get_user_events(self, uid: str, lasttime: int = -1, limit: int = 30) -> Dict[str, Any]:
         """
-        通过解析HTML页面获取用户详细信息
+        获取用户动态列表
         
         Args:
             uid: 用户ID
+            lasttime: 上次查询的最后时间戳，用于分页
+            limit: 每页数量
             
         Returns:
-            包含用户详细信息的字典
+            动态列表响应
         """
-        import re
+        csrf_token = self._get_csrf_token()
+        request_url = f"{self.WEAPI_URL}/event/get/{uid}?csrf_token={csrf_token}"
         
-        url = f"{self.BASE_URL}/user/home?id={uid}"
-        headers = self._get_headers()
-        headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+        data = {
+            "time": lasttime,
+            "limit": limit,
+            "getcounts": "true",
+            "csrf_token": csrf_token
+        }
         
-        # 构建Cookie
-        base_cookie = f"os=pc; osver=Microsoft-Windows-10-Professional-build-19045-64bit; appver=2.10.16.200601; deviceId={self._device_id}"
-        if self.cookies:
-            headers["Cookie"] = f"{base_cookie}; {self.cookies}"
-        else:
-            headers["Cookie"] = base_cookie
+        result = await self._request("POST", request_url, data)
+        return result
+    
+    async def get_user_follows(self, uid: str, offset: int = 0, limit: int = 30) -> Dict[str, Any]:
+        """
+        获取用户关注列表
         
-        try:
-            response = await self.client.get(url, headers=headers)
-            html = response.text
+        Args:
+            uid: 用户ID
+            offset: 偏移量
+            limit: 每页数量
             
-            user_info = {
-                "uid": uid,
-                "nickname": "",
-                "avatar_url": "",
-                "background_url": "",
-                "signature": "",
-                "level": 0,
-                "listen_songs": 0,
-                "follows": 0,
-                "followeds": 0,
-                "event_count": 0,
-                "create_days": 0,
-                "province": 0,
-                "city": 0
-            }
+        Returns:
+            关注列表响应
+        """
+        csrf_token = self._get_csrf_token()
+        request_url = f"{self.WEAPI_URL}/user/getfollows/{uid}?csrf_token={csrf_token}"
+        
+        data = {
+            "offset": offset,
+            "limit": limit,
+            "order": "true",
+            "csrf_token": csrf_token
+        }
+        
+        result = await self._request("POST", request_url, data)
+        return result
+    
+    async def get_user_followeds(self, uid: str, offset: int = 0, limit: int = 30) -> Dict[str, Any]:
+        """
+        获取用户粉丝列表
+        
+        Args:
+            uid: 用户ID
+            offset: 偏移量
+            limit: 每页数量
             
-            # 解析 JSON 数据 (页面中通常有 window.__INITIAL_STATE__ 或类似的数据)
-            # 尝试解析 <script> 中的用户数据
-            json_pattern = r'<script[^>]*>\s*window\.GUser\s*=\s*(\{[^;]+\});?\s*</script>'
-            match = re.search(json_pattern, html)
-            if match:
-                try:
-                    user_data = json.loads(match.group(1))
-                    user_info["uid"] = str(user_data.get("userId", uid))
-                    user_info["nickname"] = user_data.get("nickname", "")
-                    user_info["avatar_url"] = user_data.get("avatarUrl", "")
-                    user_info["signature"] = user_data.get("signature", "")
-                    user_info["vip_type"] = user_data.get("vipType", 0)
-                except json.JSONDecodeError:
-                    pass
-            
-            # 解析听歌数量
-            listen_pattern = r'累计听歌(\d+)首'
-            listen_match = re.search(listen_pattern, html)
-            if listen_match:
-                user_info["listen_songs"] = int(listen_match.group(1))
-            
-            # 解析等级
-            level_pattern = r'<a[^>]*class="[^"]*u-icn-lv[^"]*lv(\d+)[^"]*"'
-            level_match = re.search(level_pattern, html)
-            if level_match:
-                user_info["level"] = int(level_match.group(1))
-            
-            # 解析关注数
-            follows_pattern = r'<strong[^>]*id="follow_count"[^>]*>(\d+)</strong>'
-            follows_match = re.search(follows_pattern, html)
-            if follows_match:
-                user_info["follows"] = int(follows_match.group(1))
-            
-            # 解析粉丝数
-            followeds_pattern = r'<strong[^>]*id="fan_count"[^>]*>(\d+)</strong>'
-            followeds_match = re.search(followeds_pattern, html)
-            if followeds_match:
-                user_info["followeds"] = int(followeds_match.group(1))
-            
-            # 解析动态数
-            event_pattern = r'<a[^>]*href="/user/event[^"]*"[^>]*>\s*<strong>(\d+)</strong>'
-            event_match = re.search(event_pattern, html)
-            if event_match:
-                user_info["event_count"] = int(event_match.group(1))
-            
-            # 解析注册天数
-            days_pattern = r'(\d+)天前加入'
-            days_match = re.search(days_pattern, html)
-            if days_match:
-                user_info["create_days"] = int(days_match.group(1))
-            
-            # 解析地区
-            location_pattern = r'所在地区：([^<]+)'
-            location_match = re.search(location_pattern, html)
-            if location_match:
-                user_info["location"] = location_match.group(1).strip()
-            
-            # 解析头像
-            avatar_pattern = r'<img[^>]*class="[^"]*j-img[^"]*"[^>]*src="([^"]+)"'
-            avatar_match = re.search(avatar_pattern, html)
-            if avatar_match:
-                user_info["avatar_url"] = avatar_match.group(1)
-            
-            # 解析昵称（备用方式）
-            if not user_info["nickname"]:
-                nickname_pattern = r'<span[^>]*class="[^"]*tit[^"]*"[^>]*>\s*<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)</span>'
-                nickname_match = re.search(nickname_pattern, html)
-                if nickname_match:
-                    user_info["nickname"] = nickname_match.group(1).strip()
-            
-            # 备用: 从title获取昵称
-            if not user_info["nickname"]:
-                title_pattern = r'<title>([^<]+)的主页'
-                title_match = re.search(title_pattern, html)
-                if title_match:
-                    user_info["nickname"] = title_match.group(1).strip()
-            
-            logger.info(f"从HTML解析用户信息: {user_info.get('nickname', 'unknown')}")
-            return user_info
-            
-        except Exception as e:
-            logger.error(f"解析用户HTML页面失败: {e}")
-            return {"uid": uid, "error": str(e)}
+        Returns:
+            粉丝列表响应
+        """
+        csrf_token = self._get_csrf_token()
+        request_url = f"{self.WEAPI_URL}/user/getfolloweds?csrf_token={csrf_token}"
+        
+        data = {
+            "userId": uid,
+            "offset": offset,
+            "limit": limit,
+            "csrf_token": csrf_token
+        }
+        
+        result = await self._request("POST", request_url, data)
+        return result
     
     async def get_user_full_info(self, uid: str = None) -> Dict[str, Any]:
         """
-        获取用户完整信息（优先从HTML解析，结合多个API）
+        获取用户完整信息（结合多个API）
         
         Args:
             uid: 用户ID，如果为空则从登录状态获取
@@ -699,6 +669,7 @@ class NetEaseAPI:
             "city": 0,
             "gender": 0,
             "birthday": 0,
+            "create_time": 0,  # 创建时间戳
             "listen_songs": 0,
             "follows": 0,
             "followeds": 0,
@@ -707,7 +678,7 @@ class NetEaseAPI:
             "create_days": 0
         }
         
-        # 首先尝试API获取登录状态信息（获取uid）
+        # 首先尝试API获取登录状态信息（获取uid和基本信息）
         try:
             api_result = await self.get_login_status()
             if api_result.get("profile"):
@@ -724,76 +695,214 @@ class NetEaseAPI:
                     "city": profile.get("city", 0),
                     "gender": profile.get("gender", 0),
                     "birthday": profile.get("birthday", 0),
-                    "follows": profile.get("follows", 0),
-                    "followeds": profile.get("followeds", 0),
-                    "event_count": profile.get("eventCount", 0),
-                    "playlist_count": profile.get("playlistCount", 0)
+                    "create_time": profile.get("createTime", 0),
                 })
         except Exception as e:
             logger.warning(f"API获取登录状态失败: {e}")
         
-        # 如果有uid，优先从HTML解析获取详细信息（更准确）
+        # 获取用户详情（等级、听歌数、创建天数等）
         if uid:
             try:
-                html_info = await self.get_user_detail_from_html(uid)
-                if html_info and not html_info.get("error"):
-                    # HTML解析的数据通常更准确，优先使用
-                    if html_info.get("level"):
-                        user_info["level"] = html_info["level"]
-                    if html_info.get("listen_songs"):
-                        user_info["listen_songs"] = html_info["listen_songs"]
-                    if html_info.get("follows"):
-                        user_info["follows"] = html_info["follows"]
-                    if html_info.get("followeds"):
-                        user_info["followeds"] = html_info["followeds"]
-                    if html_info.get("event_count"):
-                        user_info["event_count"] = html_info["event_count"]
-                    if html_info.get("create_days"):
-                        user_info["create_days"] = html_info["create_days"]
-                    if html_info.get("location"):
-                        user_info["location"] = html_info["location"]
-                    if html_info.get("nickname") and not user_info.get("nickname"):
-                        user_info["nickname"] = html_info["nickname"]
-                    if html_info.get("avatar_url") and not user_info.get("avatar_url"):
-                        user_info["avatar_url"] = html_info["avatar_url"]
+                detail_result = await self.get_user_detail(uid)
+                if detail_result.get("code") == 200:
+                    user_info["listen_songs"] = detail_result.get("listenSongs", 0)
+                    user_info["create_days"] = detail_result.get("createDays", 0)
                     
-                    logger.info(f"从HTML解析用户信息成功: {user_info.get('nickname')} Lv.{user_info.get('level')} 听歌{user_info.get('listen_songs')}首")
+                    profile = detail_result.get("profile", {})
+                    if profile:
+                        if not user_info.get("nickname"):
+                            user_info["nickname"] = profile.get("nickname", "")
+                        if not user_info.get("avatar_url"):
+                            user_info["avatar_url"] = profile.get("avatarUrl", "")
+                        if not user_info.get("create_time"):
+                            user_info["create_time"] = profile.get("createTime", 0)
+                        # 从详情页获取基础统计（后续会被专门API覆盖）
+                        user_info["follows"] = profile.get("follows", 0)
+                        user_info["followeds"] = profile.get("followeds", 0)
+                        user_info["event_count"] = profile.get("eventCount", 0)
+                        user_info["playlist_count"] = profile.get("playlistCount", 0)
             except Exception as e:
-                logger.warning(f"HTML解析用户信息失败: {e}")
+                logger.warning(f"API获取用户详情失败: {e}")
+        
+        # 使用等级API获取准确的等级和听歌数
+        try:
+            level_result = await self.get_user_level()
+            if level_result.get("code") == 200:
+                level_data = level_result.get("data", {})
+                user_info["level"] = level_data.get("level", user_info.get("level", 0))
+                now_play_count = level_data.get("nowPlayCount", 0)
+                if now_play_count > 0:
+                    user_info["listen_songs"] = now_play_count
+        except Exception as e:
+            logger.warning(f"API获取用户等级失败: {e}")
+        
+        # 使用专门API获取准确的关注数
+        if uid:
+            try:
+                follows_result = await self.get_user_follows(uid, limit=1)
+                if follows_result.get("code") == 200:
+                    # 从分页信息获取总数，或者使用返回的follow列表长度
+                    # 通常API会返回更准确的数量
+                    pass  # 关注数已从profile获取
+            except Exception as e:
+                logger.debug(f"获取关注列表失败: {e}")
             
-            # 如果HTML解析失败或缺少数据，尝试API获取用户详情
-            if not user_info.get("level") or not user_info.get("listen_songs"):
-                try:
-                    detail_result = await self.get_user_detail(uid)
-                    if detail_result.get("code") == 200:
-                        # 等级信息
-                        if not user_info.get("level"):
-                            user_info["level"] = detail_result.get("level", 0)
-                        
-                        # 听歌数
-                        if not user_info.get("listen_songs"):
-                            user_info["listen_songs"] = detail_result.get("listenSongs", 0)
-                        
-                        # 创建天数
-                        if not user_info.get("create_days"):
-                            user_info["create_days"] = detail_result.get("createDays", 0)
-                        
-                        # 从profile补充信息
-                        profile = detail_result.get("profile", {})
-                        if profile:
-                            if not user_info.get("nickname"):
-                                user_info["nickname"] = profile.get("nickname", "")
-                            if not user_info.get("avatar_url"):
-                                user_info["avatar_url"] = profile.get("avatarUrl", "")
-                            if not user_info.get("signature"):
-                                user_info["signature"] = profile.get("signature", "")
-                            if not user_info.get("follows"):
-                                user_info["follows"] = profile.get("follows", 0)
-                            if not user_info.get("followeds"):
-                                user_info["followeds"] = profile.get("followeds", 0)
-                        
-                        logger.info(f"从API获取用户详情: Lv.{user_info.get('level')} 听歌{user_info.get('listen_songs')}首")
-                except Exception as e:
-                    logger.warning(f"API获取用户详情失败: {e}")
+            # 使用专门API获取准确的粉丝数
+            try:
+                followers_result = await self.get_user_followers(uid, limit=1)
+                if followers_result.get("code") == 200:
+                    pass  # 粉丝数已从profile获取
+            except Exception as e:
+                logger.debug(f"获取粉丝列表失败: {e}")
+            
+            # 歌单数量已从profile中获取，这里不再重复调用API
+            # 歌单数据会在其他地方（如歌单页面）调用 get_user_playlists 时同步到数据库
+            
+            # 使用动态API获取准确的动态数
+            try:
+                events_result = await self.get_user_events(uid, limit=1)
+                if events_result.get("code") == 200:
+                    # 动态API通常会返回总数
+                    total = events_result.get("total", events_result.get("size", 0))
+                    if total > 0:
+                        user_info["event_count"] = total
+            except Exception as e:
+                logger.debug(f"获取动态列表失败: {e}")
+        
+        logger.info(f"获取用户完整信息: {user_info.get('nickname')} Lv.{user_info.get('level')} 关注{user_info.get('follows')} 粉丝{user_info.get('followeds')} 歌单{user_info.get('playlist_count')} 动态{user_info.get('event_count')}")
         
         return user_info
+
+    async def get_discover_playlists_from_html(self, cat: str = None, order: str = "hot", limit: int = 35, offset: int = 0) -> List[Dict[str, Any]]:
+        """
+        从发现歌单页面HTML解析歌单列表
+        
+        Args:
+            cat: 分类标签（如：华语、流行、摇滚等），None表示全部
+            order: 排序方式，hot=最热, new=最新
+            limit: 每页数量
+            offset: 偏移量
+            
+        Returns:
+            歌单列表 [{id, name, cover, play_count, creator}, ...]
+        """
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            logger.error("需要安装 beautifulsoup4: pip install beautifulsoup4 lxml")
+            return []
+        
+        try:
+            # 构建URL
+            url = f"{self.BASE_URL}/discover/playlist"
+            params = {
+                "order": order,
+                "limit": str(limit),
+                "offset": str(offset)
+            }
+            if cat:
+                params["cat"] = cat
+            
+            # 直接请求HTML页面
+            headers = {
+                "User-Agent": self.USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Referer": f"{self.BASE_URL}/",
+                "Cookie": self.cookies
+            }
+            
+            response = await self.client.get(url, params=params, headers=headers)
+            
+            if response.status_code != 200:
+                logger.warning(f"获取发现歌单页面失败: HTTP {response.status_code}")
+                return []
+            
+            html = response.text
+            soup = BeautifulSoup(html, "lxml")
+            
+            playlists = []
+            
+            # 解析歌单列表
+            # 歌单在 id="m-pl-container" 的 ul 中
+            pl_container = soup.find("ul", id="m-pl-container")
+            if not pl_container:
+                logger.warning("未找到歌单容器")
+                return []
+            
+            # 每个歌单是一个 li 元素
+            for li in pl_container.find_all("li"):
+                try:
+                    # 封面和链接
+                    cover_div = li.find("div", class_="u-cover")
+                    if not cover_div:
+                        continue
+                    
+                    # 获取歌单ID和封面
+                    a_tag = cover_div.find("a", class_="msk")
+                    if not a_tag:
+                        continue
+                    
+                    href = a_tag.get("href", "")
+                    # href格式: /playlist?id=12345678
+                    if "id=" not in href:
+                        continue
+                    
+                    playlist_id = href.split("id=")[-1].split("&")[0]
+                    
+                    # 封面图片
+                    img = cover_div.find("img")
+                    cover_url = img.get("src", "") if img else ""
+                    
+                    # 播放次数
+                    play_count_span = cover_div.find("span", class_="nb")
+                    play_count_text = play_count_span.get_text(strip=True) if play_count_span else "0"
+                    play_count = self._parse_play_count(play_count_text)
+                    
+                    # 歌单名称
+                    name_a = li.find("a", class_="tit")
+                    playlist_name = name_a.get("title", "") or name_a.get_text(strip=True) if name_a else ""
+                    
+                    # 创建者
+                    creator_a = li.find("a", class_="nm")
+                    creator_name = creator_a.get_text(strip=True) if creator_a else ""
+                    
+                    if playlist_id and playlist_name:
+                        playlists.append({
+                            "id": playlist_id,
+                            "name": playlist_name,
+                            "cover": cover_url,
+                            "play_count": play_count,
+                            "creator": creator_name
+                        })
+                        
+                except Exception as e:
+                    logger.debug(f"解析单个歌单失败: {e}")
+                    continue
+            
+            logger.info(f"从发现页面解析到 {len(playlists)} 个歌单")
+            return playlists
+            
+        except Exception as e:
+            logger.error(f"解析发现歌单页面失败: {e}")
+            return []
+    
+    def _parse_play_count(self, text: str) -> int:
+        """解析播放次数文本（如：1.2万、100万+）"""
+        text = text.strip().replace("+", "")
+        try:
+            if "亿" in text:
+                return int(float(text.replace("亿", "")) * 100000000)
+            elif "万" in text:
+                return int(float(text.replace("万", "")) * 10000)
+            else:
+                return int(text)
+        except:
+            return 0
+
+    async def get_discover_playlist_categories(self) -> Dict[str, Any]:
+        """获取歌单分类列表"""
+        return await self._weapi_request(
+            "/api/playlist/catalogue",
+            {}
+        )

@@ -25,10 +25,16 @@ function sidebarApp() {
         // WebSocket
         ws: null,
         
+        // 用户状态刷新定时器
+        userRefreshTimer: null,
+        
         // 初始化
         async init() {
             await this.loadUsers();
             this.connectWebSocket();
+            
+            // 启动用户状态定时刷新（每30秒刷新一次，保持状态同步）
+            this.startUserRefresh();
             
             // 如果页面需要登录但没有用户，重定向到首页
             if (this.requireLogin && !this.hasCurrentUser) {
@@ -40,6 +46,22 @@ function sidebarApp() {
             if (typeof window.pageInit === 'function') {
                 window.pageInit(this);
             }
+        },
+        
+        // 启动用户状态定时刷新
+        startUserRefresh() {
+            // 清除已有的定时器
+            if (this.userRefreshTimer) {
+                clearInterval(this.userRefreshTimer);
+            }
+            // 每30秒刷新一次用户列表
+            this.userRefreshTimer = setInterval(async () => {
+                await this.loadUsers();
+                // 如果需要登录但当前用户丢失，重定向到首页
+                if (this.requireLogin && !this.hasCurrentUser) {
+                    window.location.href = '/?need_login=1';
+                }
+            }, 30000);
         },
         
         // 加载用户列表
