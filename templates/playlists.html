@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的歌单 - 网易云音乐助手</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/sidebar.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body class="bg-gray-100 min-h-screen" x-data="{ ...sidebarApp(), ...playlistsPage() }" x-init="init()">
+    <script>window.CURRENT_PAGE = 'playlists'; window.REQUIRE_LOGIN = true;</script>
+    
+    <!-- 侧边栏 -->
+    <aside class="fixed left-0 top-0 h-full w-72 bg-white shadow-lg z-50 flex flex-col">
+        <div class="p-6 border-b">
+            <a href="/" class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full netease-bg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-gray-800">网易云助手</h1>
+                    <p class="text-xs text-gray-500">Music Helper</p>
+                </div>
+            </a>
+        </div>
+        
+        <div class="flex-1 overflow-hidden flex flex-col">
+            <div class="p-4 border-b">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-semibold text-gray-600">已登录账号</h3>
+                    <button @click="window.location.href='/login'" class="text-xs px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded transition">+ 添加</button>
+                </div>
+                <div class="space-y-2 max-h-48 overflow-y-auto user-list">
+                    <template x-for="u in users" :key="u.user_id">
+                        <div @click="switchUser(u.user_id)" 
+                             :class="{'user-card-selected': u.is_current, 'user-card-normal': !u.is_current, 'user-card-inactive': !u.active}"
+                             class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition">
+                            <img :src="u.avatar_url || 'https://p1.music.126.net/SUeqMM8HOIpHv9Nhl9qt9w==/109951165647004069.jpg'" :class="{'ring-2 ring-red-500': u.is_current}" class="w-10 h-10 rounded-full object-cover">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-800 truncate" x-text="u.nickname || '用户'"></p>
+                                <p :class="{'text-red-500 font-medium': u.is_current, 'text-gray-500': !u.is_current}" class="text-xs" x-text="u.is_current ? '当前账号' : (u.active ? '在线' : '已失效')"></p>
+                            </div>
+                            <button @click.stop="deleteUser(u.user_id)" class="p-1 text-gray-400 hover:text-red-500 transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                    </template>
+                    <div x-show="users.length === 0" class="text-center py-4 text-gray-400 text-sm">暂无登录账号</div>
+                </div>
+            </div>
+        
+            <nav class="flex-1 p-4 overflow-y-auto">
+                <ul class="space-y-2">
+                    <li><a href="/dashboard/profile" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                        <span>用户详情</span>
+                    </a></li>
+                    <li><a href="/dashboard/ranking" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+                        <span>听歌排行</span>
+                    </a></li>
+                    <li><a href="/dashboard/playlists" class="sidebar-item active flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                        <span>我的歌单</span>
+                    </a></li>
+                    <li class="pt-4 border-t mt-4"><span class="px-4 text-xs text-gray-400 uppercase">任务</span></li>
+                    <li><a href="/dashboard/play-count" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>刷歌数量</span>
+                    </a></li>
+                    <li><a href="/dashboard/play-time" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span>刷歌时长</span>
+                    </a></li>
+                </ul>
+            </nav>
+        </div>
+        
+        <div class="p-4 border-t" x-show="hasCurrentUser">
+            <button @click="logoutCurrent" class="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                <span>退出当前账号</span>
+            </button>
+        </div>
+    </aside>
+    
+    <!-- 主内容区 -->
+    <main class="ml-72 p-8">
+        <div class="mb-8">
+            <h2 class="text-2xl font-bold text-gray-800">我的歌单</h2>
+            <p class="text-gray-500 mt-1">管理和查看您的所有歌单</p>
+        </div>
+        
+        <div class="grid grid-cols-2 lg:grid-cols-3 gap-6">
+            <template x-for="playlist in playlists" :key="playlist.id">
+                <div class="bg-white rounded-2xl card-shadow overflow-hidden hover:shadow-lg transition cursor-pointer">
+                    <div class="relative">
+                        <img :src="playlist.cover_url || 'https://p1.music.126.net/jWE3OEZUlwdz0ARvyQ9wAA==/109951165474121408.jpg'" 
+                             class="w-full aspect-square object-cover">
+                        <div class="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full flex items-center">
+                            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                            </svg>
+                            <span x-text="playlist.play_count"></span>
+                        </div>
+                        <div x-show="playlist.is_mine" class="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                            我创建的
+                        </div>
+                    </div>
+                    <div class="p-4">
+                        <p class="font-medium text-gray-800 truncate" x-text="playlist.name"></p>
+                        <p class="text-sm text-gray-500 mt-1">
+                            <span x-text="playlist.track_count"></span> 首 · 
+                            <span x-text="playlist.creator.nickname"></span>
+                        </p>
+                    </div>
+                </div>
+            </template>
+            <div x-show="playlists.length === 0 && !loading" class="col-span-full p-12 text-center text-gray-400 bg-white rounded-2xl">
+                <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+                <p>暂无歌单</p>
+            </div>
+            <div x-show="loading" class="col-span-full p-12 text-center">
+                <svg class="w-8 h-8 mx-auto animate-spin text-red-500" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/js/sidebar.js"></script>
+    <script src="/static/js/playlists.js"></script>
+</body>
+</html>

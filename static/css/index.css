@@ -1,0 +1,8 @@
+/**
+ * 首页专用样式
+ */
+
+/* 音乐图标动画 */
+.music-icon {
+    animation: pulse 2s infinite;
+}

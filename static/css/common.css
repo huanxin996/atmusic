@@ -1,0 +1,96 @@
+/**
+ * 公共样式变量和基础样式
+ */
+
+/* 字体 */
+body {
+    font-family: 'Noto Sans SC', 'Inter', sans-serif;
+}
+
+/* 渐变背景 */
+.gradient-bg {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* 网易云红色主题 */
+.netease-red {
+    color: #c20c0c;
+}
+
+.netease-bg {
+    background-color: #c20c0c;
+}
+
+.netease-bg-light {
+    background-color: #f5f5f5;
+}
+
+.netease-bg-dark {
+    background-color: #1d1d1d;
+}
+
+/* 卡片阴影 */
+.card-shadow {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+}
+
+/* 动画 */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.animate-pulse {
+    animation: pulse 2s ease-in-out infinite;
+}
+
+/* 过渡效果 */
+.transition-all {
+    transition: all 0.3s ease;
+}
+
+/* 按钮基础样式 */
+.btn-primary {
+    padding: 0.75rem 2rem;
+    border-radius: 0.75rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+    opacity: 0.9;
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 输入框样式 */
+.input-base {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.75rem;
+    transition: all 0.2s ease;
+}
+
+.input-base:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px #c20c0c;
+    border-color: transparent;
+}

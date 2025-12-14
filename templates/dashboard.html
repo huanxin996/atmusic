@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网易云音乐助手 - 管理面板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/common.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body class="bg-gray-100 min-h-screen" x-data="dashboard()" x-init="init()">
+    <!-- 侧边栏 -->
+    <aside class="fixed left-0 top-0 h-full w-72 bg-white shadow-lg z-50 flex flex-col">
+        <div class="p-6 border-b">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-full netease-bg flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-gray-800">网易云助手</h1>
+                    <p class="text-xs text-gray-500">Music Helper</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 用户列表区域 -->
+        <div class="flex-1 overflow-hidden flex flex-col">
+            <div class="p-4 border-b">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-semibold text-gray-600">已登录账号</h3>
+                    <button @click="window.location.href='/login'" 
+                            class="text-xs px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded transition">
+                        + 添加
+                    </button>
+                </div>
+                <div class="space-y-2 max-h-48 overflow-y-auto user-list">
+                    <template x-for="u in users" :key="u.user_id">
+                        <div @click="switchUser(u.user_id)" 
+                             :class="{'border-2 border-red-500 bg-red-50': u.is_current, 'border border-gray-200': !u.is_current, 'opacity-50': !u.active}"
+                             class="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition">
+                            <img :src="u.avatar_url || 'https://p1.music.126.net/SUeqMM8HOIpHv9Nhl9qt9w==/109951165647004069.jpg'" 
+                                 :class="{'ring-2 ring-red-500': u.is_current}"
+                                 class="w-10 h-10 rounded-full object-cover">
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-gray-800 truncate" x-text="u.nickname || '用户'"></p>
+                                <p :class="{'text-red-500 font-medium': u.is_current, 'text-gray-500': !u.is_current}" 
+                                   class="text-xs" x-text="u.is_current ? '当前账号' : (u.active ? '在线' : '已失效')"></p>
+                            </div>
+                            <button @click.stop="deleteUser(u.user_id)" 
+                                    class="p-1 text-gray-400 hover:text-red-500 transition">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </template>
+                    <div x-show="users.length === 0" class="text-center py-4 text-gray-400 text-sm">
+                        暂无登录账号
+                    </div>
+                </div>
+            </div>
+        
+            <nav class="flex-1 p-4 overflow-y-auto">
+                <ul class="space-y-2">
+                    <li>
+                        <a href="#" @click.prevent="currentTab = 'profile'" 
+                           :class="{'active': currentTab === 'profile'}"
+                           class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                            <span>用户详情</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" @click.prevent="currentTab = 'play-record'" 
+                           :class="{'active': currentTab === 'play-record'}"
+                           class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                            </svg>
+                            <span>听歌排行</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" @click.prevent="currentTab = 'playlists'" 
+                           :class="{'active': currentTab === 'playlists'}"
+                           class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                            </svg>
+                            <span>我的歌单</span>
+                        </a>
+                    </li>
+                    <li class="pt-4 border-t mt-4">
+                        <span class="px-4 text-xs text-gray-400 uppercase">任务</span>
+                    </li>
+                    <li>
+                        <a href="#" @click.prevent="currentTab = 'play-count'" 
+                           :class="{'active': currentTab === 'play-count'}"
+                           class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span>刷歌数量</span>
+                            <span x-show="playCount.running" class="ml-auto w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#" @click.prevent="currentTab = 'play-time'" 
+                           :class="{'active': currentTab === 'play-time'}"
+                           class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span>刷歌时长</span>
+                            <span x-show="playTime.running" class="ml-auto w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+        
+        <div class="p-4 border-t">
+            <button @click="logoutCurrent" 
+                    class="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                          d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                </svg>
+                <span>退出当前账号</span>
+            </button>
+        </div>
+    </aside>
+    
+    <!-- 主内容区 -->
+    <main class="ml-72 p-8">
+        <!-- 用户详情页 -->
+        <div x-show="currentTab === 'profile'" x-cloak>
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-gray-800">用户详情</h2>
+                <p class="text-gray-500 mt-1">查看您的网易云音乐账户信息</p>
+            </div>
+            
+            <!-- 用户卡片 -->
+            <div class="bg-white rounded-2xl card-shadow overflow-hidden mb-8">
+                <div class="gradient-bg-dark h-40 relative">
+                    <div class="absolute -bottom-16 left-8">
+                        <div class="avatar-ring rounded-full">
+                            <img :src="user.avatarUrl || 'https://p1.music.126.net/SUeqMM8HOIpHv9Nhl9qt9w==/109951165647004069.jpg'" 
+                                 alt="avatar" 
+                                 class="w-32 h-32 rounded-full object-cover border-4 border-white">
+                        </div>
+                    </div>
+                    <!-- Cookie状态指示 -->
+                    <div class="absolute top-4 right-4">
+                        <span :class="cookieValid ? 'bg-green-500' : 'bg-red-500'" 
+                              class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium text-white">
+                            <span class="w-2 h-2 rounded-full mr-2" :class="cookieValid ? 'bg-green-200' : 'bg-red-200'"></span>
+                            <span x-text="cookieValid ? 'Cookie有效' : 'Cookie已失效'"></span>
+                        </span>
+                    </div>
+                </div>
+                <div class="pt-20 pb-8 px-8">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <h3 class="text-2xl font-bold text-gray-800" x-text="user.nickname || '未登录'"></h3>
+                            <p class="text-gray-500 mt-1 flex items-center space-x-2">
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
+                                      :class="user.vipType > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-600'">
+                                    <span x-text="user.vipType > 0 ? 'VIP会员' : '普通用户'"></span>
+                                </span>
+                                <span class="text-sm" x-text="'Lv.' + (user.level || 0)"></span>
+                                <span class="text-sm text-gray-400" x-text="user.gender === 1 ? '♂' : (user.gender === 2 ? '♀' : '')"></span>
+                            </p>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button @click="validateCookie" 
+                                    :disabled="validating"
+                                    class="px-4 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-600 text-sm transition flex items-center space-x-2">
+                                <svg class="w-4 h-4" :class="{'animate-spin': validating}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                                </svg>
+                                <span x-text="validating ? '验证中...' : '验证Cookie'"></span>
+                            </button>
+                            <button @click="refreshUserInfo" 
+                                    class="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 text-sm transition flex items-center space-x-2">
+                                <svg class="w-4 h-4" :class="{'animate-spin': loading}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                                </svg>
+                                <span>刷新</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <p class="mt-4 text-gray-600" x-text="user.signature || '这个人很懒，什么都没写~'"></p>
+                    
+                    <!-- 统计信息 -->
+                    <div class="grid grid-cols-5 gap-4 mt-8">
+                        <div class="stat-card rounded-xl p-4 text-center">
+                            <div class="text-2xl font-bold netease-red" x-text="user.follows || 0"></div>
+                            <div class="text-sm text-gray-500 mt-1">关注</div>
+                        </div>
+                        <div class="stat-card rounded-xl p-4 text-center">
+                            <div class="text-2xl font-bold netease-red" x-text="user.followeds || 0"></div>
+                            <div class="text-sm text-gray-500 mt-1">粉丝</div>
+                        </div>
+                        <div class="stat-card rounded-xl p-4 text-center">
+                            <div class="text-2xl font-bold netease-red" x-text="user.playlistCount || 0"></div>
+                            <div class="text-sm text-gray-500 mt-1">歌单</div>
+                        </div>
+                        <div class="stat-card rounded-xl p-4 text-center">
+                            <div class="text-2xl font-bold netease-red" x-text="user.eventCount || 0"></div>
+                            <div class="text-sm text-gray-500 mt-1">动态</div>
+                        </div>
+                        <div class="stat-card rounded-xl p-4 text-center">
+                            <div class="text-2xl font-bold netease-red" x-text="user.listenSongs || 0"></div>
+                            <div class="text-sm text-gray-500 mt-1">累计听歌</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 账户信息 -->
+            <div class="bg-white rounded-2xl card-shadow p-8">
+                <h4 class="text-lg font-semibold text-gray-800 mb-6">账户信息</h4>
+                <div class="grid grid-cols-2 gap-6">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center">
+                            <svg class="w-6 h-6 netease-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="text-sm text-gray-500">用户ID</div>
+                            <div class="font-medium text-gray-800" x-text="user.userId || '-'"></div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center">
+                            <svg class="w-6 h-6 netease-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="text-sm text-gray-500">所在地区</div>
+                            <div class="font-medium text-gray-800" x-text="user.location || '未设置'"></div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center">
+                            <svg class="w-6 h-6 netease-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="text-sm text-gray-500">注册时间</div>
+                            <div class="font-medium text-gray-800" x-text="user.createTime || '-'"></div>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 bg-red-50 rounded-xl flex items-center justify-center">
+                            <svg class="w-6 h-6 netease-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <div class="text-sm text-gray-500">Cookie状态</div>
+                            <div class="font-medium" :class="cookieValid ? 'text-green-600' : 'text-red-600'" 
+                                 x-text="cookieValid ? '有效' : '已失效'"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 听歌排行页 -->
+        <div x-show="currentTab === 'play-record'" x-cloak>
+            <div class="mb-8 flex items-center justify-between">
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">听歌排行</h2>
+                    <p class="text-gray-500 mt-1">查看您的听歌记录和排行</p>
+                </div>
+                <div class="flex space-x-2">
+                    <button @click="loadPlayRecord(1)" 
+                            :class="recordType === 1 ? 'netease-bg text-white' : 'bg-white text-gray-700'"
+                            class="px-4 py-2 rounded-lg font-medium transition">最近一周</button>
+                    <button @click="loadPlayRecord(0)" 
+                            :class="recordType === 0 ? 'netease-bg text-white' : 'bg-white text-gray-700'"
+                            class="px-4 py-2 rounded-lg font-medium transition">所有时间</button>
+                </div>
+            </div>
+            
+            <!-- 排行列表 -->
+            <div class="bg-white rounded-2xl card-shadow overflow-hidden">
+                <div class="p-6 border-b">
+                    <span class="text-gray-600">共 <span class="font-bold netease-red" x-text="playRecords.length"></span> 首歌曲</span>
+                </div>
+                <div class="divide-y max-h-[600px] overflow-y-auto">
+                    <template x-for="(record, index) in playRecords" :key="record.song.id">
+                        <div class="flex items-center p-4 hover:bg-gray-50 transition">
+                            <div class="w-10 text-center">
+                                <span :class="index < 3 ? 'text-red-500 font-bold' : 'text-gray-400'" 
+                                      x-text="record.rank"></span>
+                            </div>
+                            <img :src="record.song.album.pic_url || 'https://p1.music.126.net/jWE3OEZUlwdz0ARvyQ9wAA==/109951165474121408.jpg'" 
+                                 class="w-12 h-12 rounded-lg object-cover mx-4">
+                            <div class="flex-1 min-w-0">
+                                <p class="font-medium text-gray-800 truncate" x-text="record.song.name"></p>
+                                <p class="text-sm text-gray-500 truncate">
+                                    <template x-for="(artist, i) in record.song.artists" :key="artist.id">
+                                        <span>
+                                            <span x-text="artist.name"></span>
+                                            <span x-show="i < record.song.artists.length - 1"> / </span>
+                                        </span>
+                                    </template>
+                                </p>
+                            </div>
+                            <div class="text-right">
+                                <p class="text-sm font-medium text-gray-800" x-text="record.play_count + '次'"></p>
+                                <p class="text-xs text-gray-500" x-text="record.song.duration"></p>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="playRecords.length === 0 && !loading" class="p-12 text-center text-gray-400">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/>
+                        </svg>
+                        <p>暂无听歌记录</p>
+                    </div>
+                    <div x-show="loading" class="p-12 text-center">
+                        <svg class="w-8 h-8 mx-auto animate-spin text-red-500" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 歌单页 -->
+        <div x-show="currentTab === 'playlists'" x-cloak>
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-gray-800">我的歌单</h2>
+                <p class="text-gray-500 mt-1">管理和查看您的所有歌单</p>
+            </div>
+            
+            <div class="grid grid-cols-2 lg:grid-cols-3 gap-6">
+                <template x-for="playlist in playlists" :key="playlist.id">
+                    <div class="bg-white rounded-2xl card-shadow overflow-hidden hover:shadow-lg transition cursor-pointer">
+                        <div class="relative">
+                            <img :src="playlist.cover_url || 'https://p1.music.126.net/jWE3OEZUlwdz0ARvyQ9wAA==/109951165474121408.jpg'" 
+                                 class="w-full aspect-square object-cover">
+                            <div class="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full flex items-center">
+                                <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                </svg>
+                                <span x-text="playlist.play_count"></span>
+                            </div>
+                            <div x-show="playlist.is_mine" class="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                                我创建的
+                            </div>
+                        </div>
+                        <div class="p-4">
+                            <p class="font-medium text-gray-800 truncate" x-text="playlist.name"></p>
+                            <p class="text-sm text-gray-500 mt-1">
+                                <span x-text="playlist.track_count"></span> 首 · 
+                                <span x-text="playlist.creator.nickname"></span>
+                            </p>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="playlists.length === 0 && !loading" class="col-span-full p-12 text-center text-gray-400 bg-white rounded-2xl">
+                    <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                    </svg>
+                    <p>暂无歌单</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 听歌数量管理 -->
+        <div x-show="currentTab === 'play-count'" x-cloak>
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-gray-800">听歌数量</h2>
+                <p class="text-gray-500 mt-1">管理每日听歌任务，刷取听歌数量</p>
+            </div>
+            
+            <!-- 今日统计 -->
+            <div class="grid grid-cols-3 gap-6 mb-8">
+                <div class="bg-white rounded-2xl card-shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">今日播放</p>
+                            <p class="text-3xl font-bold text-gray-800 mt-2" x-text="playCount.today"></p>
+                        </div>
+                        <div class="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center">
+                            <svg class="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl card-shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">目标数量</p>
+                            <p class="text-3xl font-bold text-gray-800 mt-2" x-text="playCount.target"></p>
+                        </div>
+                        <div class="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center">
+                            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl card-shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">完成进度</p>
+                            <p class="text-3xl font-bold text-gray-800 mt-2">
+                                <span x-text="Math.min(100, Math.round(playCount.today / playCount.target * 100))"></span>%
+                            </p>
+                        </div>
+                        <div class="w-14 h-14 bg-purple-100 rounded-2xl flex items-center justify-center">
+                            <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 任务配置 -->
+            <div class="bg-white rounded-2xl card-shadow p-8 mb-8">
+                <h4 class="text-lg font-semibold text-gray-800 mb-6">任务配置</h4>
+                <div class="grid grid-cols-2 gap-8">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">目标数量</label>
+                        <input type="number" x-model="playCount.target" 
+                               class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                               placeholder="输入目标播放数量">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">播放间隔（秒）</label>
+                        <input type="number" x-model="playCount.interval" 
+                               class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                               placeholder="每首歌播放间隔">
+                    </div>
+                </div>
+                
+                <div class="mt-8 flex items-center space-x-4">
+                    <button @click="startPlayCountTask" 
+                            :disabled="playCount.running"
+                            :class="playCount.running ? 'bg-gray-400 cursor-not-allowed' : 'netease-bg hover:bg-red-700'"
+                            class="px-8 py-3 text-white rounded-xl font-medium transition flex items-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                        </svg>
+                        <span x-text="playCount.running ? '任务运行中...' : '开始刷歌'"></span>
+                    </button>
+                    <button @click="stopPlayCountTask" 
+                            :disabled="!playCount.running"
+                            :class="!playCount.running ? 'bg-gray-300 cursor-not-allowed' : 'bg-gray-600 hover:bg-gray-700'"
+                            class="px-8 py-3 text-white rounded-xl font-medium transition flex items-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+                        </svg>
+                        <span>停止任务</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 任务日志 -->
+            <div class="bg-white rounded-2xl card-shadow p-8">
+                <h4 class="text-lg font-semibold text-gray-800 mb-6">任务日志</h4>
+                <div class="bg-gray-900 rounded-xl p-4 h-64 overflow-y-auto log-console text-sm">
+                    <template x-for="log in playCount.logs" :key="log.time + log.message">
+                        <div class="py-1">
+                            <span class="text-gray-500" x-text="log.time"></span>
+                            <span :class="log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : 'text-gray-300'" 
+                                  x-text="' ' + log.message"></span>
+                        </div>
+                    </template>
+                    <div x-show="playCount.logs.length === 0" class="text-gray-500">暂无日志...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 听歌时长管理 -->
+        <div x-show="currentTab === 'play-time'" x-cloak>
+            <div class="mb-8">
+                <h2 class="text-2xl font-bold text-gray-800">听歌时长</h2>
+                <p class="text-gray-500 mt-1">管理每日听歌时长任务</p>
+            </div>
+            
+            <!-- 今日统计 -->
+            <div class="grid grid-cols-3 gap-6 mb-8">
+                <div class="bg-white rounded-2xl card-shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">今日时长</p>
+                            <p class="text-3xl font-bold text-gray-800 mt-2">
+                                <span x-text="Math.floor(playTime.today / 60)"></span>
+                                <span class="text-lg text-gray-500">分钟</span>
+                            </p>
+                        </div>
+                        <div class="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center">
+                            <svg class="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl card-shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">目标时长</p>
+                            <p class="text-3xl font-bold text-gray-800 mt-2">
+                                <span x-text="playTime.target"></span>
+                                <span class="text-lg text-gray-500">分钟</span>
+                            </p>
+                        </div>
+                        <div class="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center">
+                            <svg class="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl card-shadow p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-gray-500 text-sm">完成进度</p>
+                            <p class="text-3xl font-bold text-gray-800 mt-2">
+                                <span x-text="Math.min(100, Math.round(playTime.today / 60 / playTime.target * 100))"></span>%
+                            </p>
+                        </div>
+                        <div class="w-14 h-14 bg-purple-100 rounded-2xl flex items-center justify-center">
+                            <svg class="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                      d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 进度条 -->
+            <div class="bg-white rounded-2xl card-shadow p-8 mb-8">
+                <div class="flex items-center justify-between mb-4">
+                    <span class="text-gray-600">今日进度</span>
+                    <span class="text-gray-800 font-medium">
+                        <span x-text="Math.floor(playTime.today / 60)"></span> / <span x-text="playTime.target"></span> 分钟
+                    </span>
+                </div>
+                <div class="w-full h-4 bg-gray-200 rounded-full overflow-hidden">
+                    <div class="progress-bar h-full rounded-full transition-all duration-500"
+                         :style="'width: ' + Math.min(100, playTime.today / 60 / playTime.target * 100) + '%'"></div>
+                </div>
+            </div>
+            
+            <!-- 任务配置 -->
+            <div class="bg-white rounded-2xl card-shadow p-8 mb-8">
+                <h4 class="text-lg font-semibold text-gray-800 mb-6">任务配置</h4>
+                <div class="grid grid-cols-2 gap-8">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">目标时长（分钟）</label>
+                        <input type="number" x-model="playTime.target" 
+                               class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                               placeholder="输入目标时长">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">单曲时长（秒）</label>
+                        <input type="number" x-model="playTime.songDuration" 
+                               class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                               placeholder="模拟播放时长">
+                    </div>
+                </div>
+                
+                <div class="mt-8 flex items-center space-x-4">
+                    <button @click="startPlayTimeTask" 
+                            :disabled="playTime.running"
+                            :class="playTime.running ? 'bg-gray-400 cursor-not-allowed' : 'netease-bg hover:bg-red-700'"
+                            class="px-8 py-3 text-white rounded-xl font-medium transition flex items-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                        </svg>
+                        <span x-text="playTime.running ? '任务运行中...' : '开始刷时长'"></span>
+                    </button>
+                    <button @click="stopPlayTimeTask" 
+                            :disabled="!playTime.running"
+                            :class="!playTime.running ? 'bg-gray-300 cursor-not-allowed' : 'bg-gray-600 hover:bg-gray-700'"
+                            class="px-8 py-3 text-white rounded-xl font-medium transition flex items-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
+                                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/>
+                        </svg>
+                        <span>停止任务</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 任务日志 -->
+            <div class="bg-white rounded-2xl card-shadow p-8">
+                <h4 class="text-lg font-semibold text-gray-800 mb-6">任务日志</h4>
+                <div class="bg-gray-900 rounded-xl p-4 h-64 overflow-y-auto log-console text-sm">
+                    <template x-for="log in playTime.logs" :key="log.time + log.message">
+                        <div class="py-1">
+                            <span class="text-gray-500" x-text="log.time"></span>
+                            <span :class="log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : 'text-gray-300'" 
+                                  x-text="' ' + log.message"></span>
+                        </div>
+                    </template>
+                    <div x-show="playTime.logs.length === 0" class="text-gray-500">暂无日志...</div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
