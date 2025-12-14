@@ -87,7 +87,7 @@ class MusicPlayer:
             logger.error(f"获取用户歌单失败: {str(e)}")
         return []
     
-    async def get_songs_from_discover_playlists(self, count: int = 500, cat: str = None) -> List[Dict]:
+    async def get_songs_from_discover_playlists(self, count: int = 500, cat: str = None, progress_callback: Optional[Callable[[int, int, str], Any]] = None) -> List[Dict]:
         """
         从发现歌单页面获取歌曲
         
@@ -130,6 +130,15 @@ class MusicPlayer:
                         
                         all_songs.extend(new_songs)
                         logger.debug(f"从歌单 [{playlist_name}] 获取到 {len(new_songs)} 首新歌曲")
+                        # 如果提供了进度回调，则回调通知当前累计数量
+                        try:
+                            if progress_callback:
+                                # progress_callback 可以是同步或异步，可接受 (current_count, target_count, playlist_name)
+                                res = progress_callback(len(all_songs), count, playlist_name)
+                                if asyncio.iscoroutine(res):
+                                    await res
+                        except Exception as e:
+                            logger.debug(f"进度回调出错: {e}")
                 except Exception as e:
                     logger.warning(f"获取歌单 [{playlist_name}] 歌曲失败: {e}")
                     continue

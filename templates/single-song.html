@@ -177,7 +177,7 @@
                         <div class="text-sm text-gray-500">目标数量</div>
                     </div>
                     <div class="text-center">
-                        <div class="text-3xl font-bold text-green-500" x-text="singleSong.progress + '%'">0%</div>
+                        <div class="text-3xl font-bold text-green-500" x-text="progress + '%'">0%</div>
                         <div class="text-sm text-gray-500">完成进度</div>
                     </div>
                 </div>
@@ -191,15 +191,23 @@
 
             <!-- 日志 -->
             <div class="bg-white rounded-2xl p-8 shadow-lg">
-                <h2 class="text-xl font-semibold text-gray-800 mb-6">执行日志</h2>
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl font-semibold text-gray-800">执行日志</h2>
+                    <div class="flex items-center space-x-3 text-sm text-gray-500">
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" x-model="autoScrollLogs" class="form-checkbox h-4 w-4 text-red-500">
+                            <span>自动滚动</span>
+                        </label>
+                    </div>
+                </div>
 
-                <div class="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
+                <div id="singleSongLogs" class="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
                     <div x-show="singleSong.logs.length === 0" class="text-center text-gray-500 py-8">
                         暂无日志
                     </div>
                     <div x-show="singleSong.logs.length > 0">
-                        <div x-for="log in singleSong.logs" :key="log.time"
-                             class="mb-2 pb-2 border-b border-gray-200 last:border-b-0">
+                    <div x-for="log in singleSong.logs" :key="log.id"
+                        class="mb-2 pb-2 border-b border-gray-200 last:border-b-0">
                             <div class="flex items-start space-x-3">
                                 <span class="text-xs text-gray-400 w-16 flex-shrink-0" x-text="log.time"></span>
                                 <span :class="{

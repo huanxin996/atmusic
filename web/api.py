@@ -817,11 +817,22 @@ async def start_play_count_task(req: PlayCountTaskRequest):
             if req.source == "discover":
                 await broadcast_task_update({
                     "type": "play_count",
+                    "mode": "batch",
                     "count": task_state.today_play_count,
                     "log": "正在从发现歌单获取歌曲...",
                     "logType": "info"
                 })
-                songs = await player.get_songs_from_discover_playlists(count=req.target, cat=req.category)
+                # 定义进度回调，用于在抓取发现歌单时实时广播中间日志
+                async def discover_progress_callback(current_count, target_count, playlist_name=None):
+                    await broadcast_task_update({
+                        "type": "play_count",
+                        "mode": "batch",
+                        "count": task_state.today_play_count,
+                        "log": f"从歌单 [{playlist_name}] 获取到歌曲，累计 {current_count} 首...",
+                        "logType": "info"
+                    })
+
+                songs = await player.get_songs_from_discover_playlists(count=req.target, cat=req.category, progress_callback=discover_progress_callback)
             else:
                 songs = await player.get_songs_from_recommend()
             
@@ -836,6 +847,7 @@ async def start_play_count_task(req: PlayCountTaskRequest):
             
             await broadcast_task_update({
                 "type": "play_count",
+                "mode": "batch",
                 "count": task_state.today_play_count,
                 "log": f"获取到 {len(songs)} 首歌曲，开始播放...",
                 "logType": "info"
@@ -858,6 +870,7 @@ async def start_play_count_task(req: PlayCountTaskRequest):
                 # 显示开始播放
                 await broadcast_task_update({
                     "type": "play_count",
+                    "mode": "batch",
                     "count": task_state.today_play_count,
                     "log": f"[{task_state.today_play_count + 1}/{req.target}] 正在播放: {song_name} ({play_duration}秒)",
                     "logType": "info"
@@ -870,6 +883,7 @@ async def start_play_count_task(req: PlayCountTaskRequest):
                     task_state.today_play_count += 1
                     await broadcast_task_update({
                         "type": "play_count",
+                        "mode": "batch",
                         "count": task_state.today_play_count,
                         "log": f"[{task_state.today_play_count}/{req.target}] ✅ 完成: {song_name}",
                         "logType": "success"
@@ -877,6 +891,7 @@ async def start_play_count_task(req: PlayCountTaskRequest):
                 else:
                     await broadcast_task_update({
                         "type": "play_count",
+                        "mode": "batch",
                         "count": task_state.today_play_count,
                         "log": f"播放失败: {song_name}",
                         "logType": "error"
@@ -888,6 +903,7 @@ async def start_play_count_task(req: PlayCountTaskRequest):
             
             await broadcast_task_update({
                 "type": "play_count",
+                "mode": "batch",
                 "count": task_state.today_play_count,
                 "log": f"任务完成! 共播放 {task_state.today_play_count} 首",
                 "logType": "success"
@@ -897,6 +913,7 @@ async def start_play_count_task(req: PlayCountTaskRequest):
             logger.error(f"刷歌任务异常: {e}")
             await broadcast_task_update({
                 "type": "play_count",
+                "mode": "batch",
                 "count": task_state.today_play_count,
                 "log": f"任务异常: {str(e)}",
                 "logType": "error"
@@ -993,6 +1010,7 @@ async def start_single_song_task(req: SingleSongTaskRequest):
 
             await broadcast_task_update({
                 "type": "play_count",
+                "mode": "single",
                 "count": 0,
                 "log": f"开始刷取歌曲: {song_name}，时长: {song_duration_seconds}秒，目标: {req.target}次",
                 "logType": "info"
@@ -1005,6 +1023,7 @@ async def start_single_song_task(req: SingleSongTaskRequest):
                 # 显示进度
                 await broadcast_task_update({
                     "type": "play_count",
+                    "mode": "single",
                     "count": i,
                     "log": f"[{i + 1}/{req.target}] 正在播放: {song_name}",
                     "logType": "info"
@@ -1016,6 +1035,7 @@ async def start_single_song_task(req: SingleSongTaskRequest):
                 if success:
                     await broadcast_task_update({
                         "type": "play_count",
+                        "mode": "single",
                         "count": i + 1,
                         "log": f"[{i + 1}/{req.target}] ✅ 完成: {song_name}",
                         "logType": "success"
@@ -1023,6 +1043,7 @@ async def start_single_song_task(req: SingleSongTaskRequest):
                 else:
                     await broadcast_task_update({
                         "type": "play_count",
+                        "mode": "single",
                         "count": i,
                         "log": f"播放失败: {song_name}",
                         "logType": "error"
@@ -1036,6 +1057,7 @@ async def start_single_song_task(req: SingleSongTaskRequest):
 
             await broadcast_task_update({
                 "type": "play_count",
+                "mode": "single",
                 "count": min(i + 1, req.target),
                 "log": f"任务完成! 共播放 {min(i + 1, req.target)} 次",
                 "logType": "success"
@@ -1045,6 +1067,7 @@ async def start_single_song_task(req: SingleSongTaskRequest):
             logger.error(f"单首歌刷取任务异常: {e}")
             await broadcast_task_update({
                 "type": "play_count",
+                "mode": "single",
                 "count": 0,
                 "log": f"任务异常: {str(e)}",
                 "logType": "error"

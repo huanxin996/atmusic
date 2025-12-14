@@ -22,8 +22,15 @@ function sidebarApp() {
             playTimeRunning: false
         },
         
-        // WebSocket
-        ws: null,
+    // WebSocket
+    ws: null,
+    taskWs: null,
+    _wsReconnectTimer: null,
+    _wsAttempts: 0,
+    _wsIntentionalClose: false,
+    _taskWsReconnectTimer: null,
+    _taskWsAttempts: 0,
+    _taskWsIntentionalClose: false,
         
         // 用户状态刷新定时器
         userRefreshTimer: null,
@@ -42,6 +49,10 @@ function sidebarApp() {
                 return;
             }
             
+            // 页面卸载时清理资源
+            window.addEventListener('beforeunload', () => { try { this.cleanup(); } catch (e) {} });
+            window.addEventListener('unload', () => { try { this.cleanup(); } catch (e) {} });
+
             // 调用页面特定的初始化
             if (typeof window.pageInit === 'function') {
                 window.pageInit(this);
@@ -127,38 +138,111 @@ function sidebarApp() {
         // WebSocket连接
         connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/api/ws/status`;
-            
-            this.ws = new WebSocket(wsUrl);
-            
-            this.ws.onmessage = (event) => {
+
+            // 状态 WS（/api/ws/status）管理化连接
+            const connectStatusWs = () => {
+                const wsUrl = `${protocol}//${window.location.host}/api/ws/status`;
                 try {
-                    const data = JSON.parse(event.data);
-                    if (data.type === 'task_status') {
-                        // 处理新的task_status格式: {"type": "task_status", "task": "play_count", "running": true}
-                        if (data.task === 'play_count') {
-                            this.taskStatus.playCountRunning = data.running;
-                        } else if (data.task === 'play_time') {
-                            this.taskStatus.playTimeRunning = data.running;
+                    this.ws = new WebSocket(wsUrl);
+
+                    this.ws.onopen = () => { this._wsAttempts = 0; };
+
+                    this.ws.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            if (data.type === 'task_status') {
+                                if (data.task === 'play_count') {
+                                    this.taskStatus.playCountRunning = data.running;
+                                } else if (data.task === 'play_time') {
+                                    this.taskStatus.playTimeRunning = data.running;
+                                }
+                                if (data.play_count_running !== undefined) {
+                                    this.taskStatus.playCountRunning = data.play_count_running;
+                                }
+                                if (data.play_time_running !== undefined) {
+                                    this.taskStatus.playTimeRunning = data.play_time_running;
+                                }
+                            }
+                            if (data.type === 'task_status') {
+                                window.dispatchEvent(new CustomEvent('ws-message', { detail: data }));
+                            }
+                        } catch (e) {
+                            console.error('WebSocket消息解析失败:', e);
                         }
-                        // 兼容旧格式
-                        if (data.play_count_running !== undefined) {
-                            this.taskStatus.playCountRunning = data.play_count_running;
-                        }
-                        if (data.play_time_running !== undefined) {
-                            this.taskStatus.playTimeRunning = data.play_time_running;
-                        }
-                    }
-                    // 转发消息给页面处理
-                    window.dispatchEvent(new CustomEvent('ws-message', { detail: data }));
-                } catch (e) {
-                    console.error('WebSocket消息解析失败:', e);
+                    };
+
+                    this.ws.onclose = () => {
+                        if (this._wsIntentionalClose) return;
+                        const delay = Math.min(30000, 1000 * Math.pow(2, this._wsAttempts));
+                        this._wsAttempts += 1;
+                        this._wsReconnectTimer = setTimeout(() => connectStatusWs(), delay);
+                    };
+
+                    this.ws.onerror = (err) => { console.error('状态WS错误:', err); };
+                } catch (err) {
+                    console.error('连接状态WS失败:', err);
+                    if (!this._wsIntentionalClose) this._wsReconnectTimer = setTimeout(connectStatusWs, 5000);
                 }
             };
-            
-            this.ws.onclose = () => {
-                setTimeout(() => this.connectWebSocket(), 5000);
+
+            // 任务 WS（/api/ws/task）管理化连接 — 侧边栏仅同步状态，无需转发详细日志
+            const connectTaskWs = () => {
+                const taskWsUrl = `${protocol}//${window.location.host}/api/ws/task`;
+                try {
+                    this.taskWs = new WebSocket(taskWsUrl);
+
+                    this.taskWs.onopen = () => { this._taskWsAttempts = 0; };
+
+                    this.taskWs.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            if (data.type === 'task_status') {
+                                if (data.task === 'play_count') this.taskStatus.playCountRunning = data.running;
+                                if (data.task === 'play_time') this.taskStatus.playTimeRunning = data.running;
+                                window.dispatchEvent(new CustomEvent('ws-message', { detail: data }));
+                            }
+                        } catch (err) {
+                            console.error('任务WS消息解析失败:', err);
+                        }
+                    };
+
+                    this.taskWs.onclose = () => {
+                        if (this._taskWsIntentionalClose) return;
+                        const delay = Math.min(30000, 1000 * Math.pow(2, this._taskWsAttempts));
+                        this._taskWsAttempts += 1;
+                        this._taskWsReconnectTimer = setTimeout(() => connectTaskWs(), delay);
+                    };
+
+                    this.taskWs.onerror = (err) => { console.error('任务WS错误:', err); };
+                } catch (err) {
+                    console.error('连接任务WS失败:', err);
+                    if (!this._taskWsIntentionalClose) this._taskWsReconnectTimer = setTimeout(connectTaskWs, 5000);
+                }
             };
+
+            connectStatusWs();
+            connectTaskWs();
+        },
+
+        // 清理：在页面卸载时关闭 WS、清除定时器
+        cleanup() {
+            // 停止用户刷新定时器
+            if (this.userRefreshTimer) {
+                clearInterval(this.userRefreshTimer);
+                this.userRefreshTimer = null;
+            }
+            // 标记并关闭状态 WS
+            this._wsIntentionalClose = true;
+            if (this._wsReconnectTimer) { clearTimeout(this._wsReconnectTimer); this._wsReconnectTimer = null; }
+            if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+                try { this.ws.close(); } catch (e) { }
+            }
+            // 标记并关闭任务 WS
+            this._taskWsIntentionalClose = true;
+            if (this._taskWsReconnectTimer) { clearTimeout(this._taskWsReconnectTimer); this._taskWsReconnectTimer = null; }
+            if (this.taskWs && (this.taskWs.readyState === WebSocket.OPEN || this.taskWs.readyState === WebSocket.CONNECTING)) {
+                try { this.taskWs.close(); } catch (e) { }
+            }
         }
     };
 }

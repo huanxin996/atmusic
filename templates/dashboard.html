@@ -499,9 +499,17 @@
             
             <!-- 任务日志 -->
             <div class="bg-white rounded-2xl card-shadow p-8">
-                <h4 class="text-lg font-semibold text-gray-800 mb-6">任务日志</h4>
-                <div class="bg-gray-900 rounded-xl p-4 h-64 overflow-y-auto log-console text-sm">
-                    <template x-for="log in playCount.logs" :key="log.time + log.message">
+                <div class="flex items-center justify-between mb-6">
+                    <h4 class="text-lg font-semibold text-gray-800">任务日志</h4>
+                    <div class="flex items-center space-x-3 text-sm text-gray-500">
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" x-model="autoScrollPlayCountLogs" class="form-checkbox h-4 w-4 text-red-500">
+                            <span>自动滚动</span>
+                        </label>
+                    </div>
+                </div>
+                <div id="playCountLogsDashboard" class="bg-gray-900 rounded-xl p-4 h-64 overflow-y-auto log-console text-sm">
+                    <template x-for="log in playCount.logs" :key="log.id">
                         <div class="py-1">
                             <span class="text-gray-500" x-text="log.time"></span>
                             <span :class="log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : 'text-gray-300'" 
@@ -633,9 +641,17 @@
             
             <!-- 任务日志 -->
             <div class="bg-white rounded-2xl card-shadow p-8">
-                <h4 class="text-lg font-semibold text-gray-800 mb-6">任务日志</h4>
-                <div class="bg-gray-900 rounded-xl p-4 h-64 overflow-y-auto log-console text-sm">
-                    <template x-for="log in playTime.logs" :key="log.time + log.message">
+                <div class="flex items-center justify-between mb-6">
+                    <h4 class="text-lg font-semibold text-gray-800">任务日志</h4>
+                    <div class="flex items-center space-x-3 text-sm text-gray-500">
+                        <label class="flex items-center space-x-2">
+                            <input type="checkbox" x-model="autoScrollPlayTimeLogs" class="form-checkbox h-4 w-4 text-red-500">
+                            <span>自动滚动</span>
+                        </label>
+                    </div>
+                </div>
+                <div id="playTimeLogsDashboard" class="bg-gray-900 rounded-xl p-4 h-64 overflow-y-auto log-console text-sm">
+                    <template x-for="log in playTime.logs" :key="log.id">
                         <div class="py-1">
                             <span class="text-gray-500" x-text="log.time"></span>
                             <span :class="log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : 'text-gray-300'" 

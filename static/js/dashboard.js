@@ -46,6 +46,8 @@ function dashboard() {
             running: false,
             logs: []
         },
+        // 日志自动滚动选项
+        autoScrollPlayCountLogs: true,
         
         // 播放时长任务
         playTime: {
@@ -55,6 +57,7 @@ function dashboard() {
             running: false,
             logs: []
         },
+        autoScrollPlayTimeLogs: true,
         
         // 初始化
         async init() {
@@ -252,15 +255,33 @@ function dashboard() {
         addLog(type, message, logType = 'info') {
             const now = new Date();
             const time = now.toTimeString().split(' ')[0];
-            const log = { time: `[${time}]`, message, type: logType };
-            
+            const id = Date.now().toString() + '_' + Math.floor(Math.random() * 1000000);
+            const log = { id, time: `[${time}]`, message, type: logType };
+
             if (type === 'playCount') {
-                this.playCount.logs.unshift(log);
-                if (this.playCount.logs.length > 100) this.playCount.logs.pop();
+                // oldest-first: append
+                const last = this.playCount.logs[this.playCount.logs.length - 1];
+                if (!(last && last.message === message && last.type === logType)) {
+                    this.playCount.logs.push(log);
+                    if (this.playCount.logs.length > 100) this.playCount.logs.shift();
+                }
             } else {
-                this.playTime.logs.unshift(log);
-                if (this.playTime.logs.length > 100) this.playTime.logs.pop();
+                const last = this.playTime.logs[this.playTime.logs.length - 1];
+                if (!(last && last.message === message && last.type === logType)) {
+                    this.playTime.logs.push(log);
+                    if (this.playTime.logs.length > 100) this.playTime.logs.shift();
+                }
             }
+            // 自动滚动支持：滚动到底部显示最新日志
+            try {
+                if (type === 'playCount' && this.autoScrollPlayCountLogs) {
+                    const el = document.getElementById('playCountLogsDashboard');
+                    if (el) { try { el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); } catch (e) { el.scrollTop = el.scrollHeight; } }
+                } else if (type === 'playTime' && this.autoScrollPlayTimeLogs) {
+                    const el = document.getElementById('playTimeLogsDashboard');
+                    if (el) { try { el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); } catch (e) { el.scrollTop = el.scrollHeight; } }
+                }
+            } catch (e) { }
         },
         
         // 开始刷歌数量任务
