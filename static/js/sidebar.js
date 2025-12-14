@@ -135,8 +135,19 @@ function sidebarApp() {
                 try {
                     const data = JSON.parse(event.data);
                     if (data.type === 'task_status') {
-                        this.taskStatus.playCountRunning = data.play_count_running;
-                        this.taskStatus.playTimeRunning = data.play_time_running;
+                        // 处理新的task_status格式: {"type": "task_status", "task": "play_count", "running": true}
+                        if (data.task === 'play_count') {
+                            this.taskStatus.playCountRunning = data.running;
+                        } else if (data.task === 'play_time') {
+                            this.taskStatus.playTimeRunning = data.running;
+                        }
+                        // 兼容旧格式
+                        if (data.play_count_running !== undefined) {
+                            this.taskStatus.playCountRunning = data.play_count_running;
+                        }
+                        if (data.play_time_running !== undefined) {
+                            this.taskStatus.playTimeRunning = data.play_time_running;
+                        }
                     }
                     // 转发消息给页面处理
                     window.dispatchEvent(new CustomEvent('ws-message', { detail: data }));

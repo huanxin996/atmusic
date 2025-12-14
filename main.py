@@ -31,7 +31,7 @@ def main():
         "web.app:app",
         host=settings.host,
         port=settings.port,
-        reload=settings.debug,
+        reload=settings.reload,
         log_level="info" if settings.debug else "warning",
     )
 

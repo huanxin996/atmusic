@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     host: str = Field(default="127.0.0.1", description="服务器地址")
     port: int = Field(default=8080, description="服务器端口")
     debug: bool = Field(default=True, description="调试模式")
+    reload: bool = Field(default=True, description="是否启用自动重载")
     
     # 数据库配置
     database_url: str = Field(

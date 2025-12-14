@@ -579,13 +579,11 @@ async def start_play(req: PlayRequest):
     # 创建播放器
     state.player = MusicPlayer(state.cookies)
     
-    # 获取歌曲
+    # 获取歌曲（歌曲数据已包含source_id）
     if req.playlist_id:
         songs = await state.player.get_songs_from_playlist(req.playlist_id)
-        source_id = req.playlist_id
     else:
         songs = await state.player.get_songs_from_recommend()
-        source_id = ""
     
     if not songs:
         await state.player.close()
@@ -619,7 +617,7 @@ async def start_play(req: PlayRequest):
             result = await state.player.batch_play(
                 songs=songs,
                 count=req.count,
-                source_id=source_id,
+                source_id="",  # source_id现在从歌曲数据中获取
                 progress_callback=progress_callback
             )
             # 广播完成消息
@@ -770,13 +768,22 @@ async def task_websocket(websocket: WebSocket):
 
 
 async def broadcast_task_update(data: dict):
-    """广播任务更新到所有WebSocket"""
+    """广播任务更新到所有WebSocket（包括任务WebSocket和状态WebSocket）"""
+    # 广播到任务WebSocket
     for ws in task_websockets[:]:
         try:
             await ws.send_json(data)
         except:
             if ws in task_websockets:
                 task_websockets.remove(ws)
+    
+    # 同时广播到状态WebSocket（供侧边栏和页面使用）
+    for ws in status_websockets[:]:
+        try:
+            await ws.send_json(data)
+        except:
+            if ws in status_websockets:
+                status_websockets.remove(ws)
 
 
 # ==================== 刷歌数量任务API ====================
@@ -798,6 +805,9 @@ async def start_play_count_task(req: PlayCountTaskRequest):
         return {"code": 400, "message": "任务已在运行中"}
     
     async def run_play_count_task():
+        # 重置今日播放计数
+        task_state.today_play_count = 0
+        
         task_state.play_count_running = True
         await broadcast_task_update({"type": "task_status", "task": "play_count", "running": True})
         
@@ -838,16 +848,30 @@ async def start_play_count_task(req: PlayCountTaskRequest):
                 song = songs[i % len(songs)]
                 song_id = song.get("id")
                 song_name = song.get("name", "未知")
+                song_duration = song.get("duration", 240)  # 获取歌曲真实时长，默认240秒
+                song_source_id = song.get("source_id", "")  # 获取来源ID（歌单或专辑ID）
                 
-                # 模拟播放
-                success = await player.play_song(song_id, source_id="")
+                # 使用前端设置的间隔时间作为播放时长，而不是歌曲真实时长
+                # 这样可以让用户控制播放速度
+                play_duration = req.interval if req.interval > 0 else 30
+                
+                # 显示开始播放
+                await broadcast_task_update({
+                    "type": "play_count",
+                    "count": task_state.today_play_count,
+                    "log": f"[{task_state.today_play_count + 1}/{req.target}] 正在播放: {song_name} ({play_duration}秒)",
+                    "logType": "info"
+                })
+                
+                # 播放歌曲（等待指定的播放时长）
+                success = await player.play_song(song_id, source_id=song_source_id, duration=song_duration,play_time=play_duration, wait_before_report=True, song_name=song_name)
                 
                 if success:
                     task_state.today_play_count += 1
                     await broadcast_task_update({
                         "type": "play_count",
                         "count": task_state.today_play_count,
-                        "log": f"[{task_state.today_play_count}/{req.target}] 播放: {song_name}",
+                        "log": f"[{task_state.today_play_count}/{req.target}] ✅ 完成: {song_name}",
                         "logType": "success"
                     })
                 else:
@@ -858,8 +882,9 @@ async def start_play_count_task(req: PlayCountTaskRequest):
                         "logType": "error"
                     })
                 
-                # 等待间隔
-                await asyncio.sleep(req.interval)
+                # 检查是否达到目标数量
+                if task_state.today_play_count >= req.target:
+                    break
             
             await broadcast_task_update({
                 "type": "play_count",
@@ -894,6 +919,18 @@ async def stop_play_count_task():
     return {"code": 200, "message": "任务已停止"}
 
 
+@router.get("/task/status")
+async def get_task_status():
+    """获取任务状态"""
+    return {
+        "code": 200,
+        "play_count_running": task_state.play_count_running,
+        "play_time_running": task_state.play_time_running,
+        "play_count_today": task_state.today_play_count,
+        "play_time_today": task_state.today_play_time
+    }
+
+
 @router.get("/discover/playlists")
 async def get_discover_playlists(cat: str = None, order: str = "hot", limit: int = 35, offset: int = 0):
     """获取发现歌单列表（从HTML解析）"""
@@ -915,6 +952,120 @@ async def get_discover_playlists(cat: str = None, order: str = "hot", limit: int
             "code": 500,
             "message": str(e)
         }
+
+
+# ==================== 单首歌刷取任务API ====================
+
+class SingleSongTaskRequest(BaseModel):
+    song_id: str
+    target: int = 100  # 刷取数量
+    interval: int = 3   # 间隔时间（秒）
+
+
+@router.post("/task/single-song/start")
+async def start_single_song_task(req: SingleSongTaskRequest):
+    """开始单首歌刷取任务"""
+    if not state.cookies:
+        raise HTTPException(status_code=401, detail="请先登录")
+
+    if task_state.play_count_running:
+        return {"code": 400, "message": "已有任务在运行中"}
+
+    async def run_single_song_task():
+        task_state.play_count_running = True
+        await broadcast_task_update({"type": "task_status", "task": "play_count", "running": True})
+
+        player = MusicPlayer(state.cookies)
+        api = NetEaseAPI(state.cookies)
+        try:
+            # 获取歌曲详情
+            song_detail_result = await api.get_song_detail([req.song_id])
+            if song_detail_result.get("code") != 200 or not song_detail_result.get("songs"):
+                raise Exception("获取歌曲详情失败")
+            
+            song = song_detail_result["songs"][0]
+            song_name = song.get("name", f"歌曲ID: {req.song_id}")
+            song_duration = song.get("dt", 180000)  # 默认3分钟，如果获取失败
+            song_duration_seconds = song_duration // 1000  # 转换为秒
+            
+            # 获取专辑ID用于播放
+            album_id = song.get("al", {}).get("id", "")
+
+            await broadcast_task_update({
+                "type": "play_count",
+                "count": 0,
+                "log": f"开始刷取歌曲: {song_name}，时长: {song_duration_seconds}秒，目标: {req.target}次",
+                "logType": "info"
+            })
+            
+            for i in range(req.target):
+                if not task_state.play_count_running:
+                    break
+
+                # 显示进度
+                await broadcast_task_update({
+                    "type": "play_count",
+                    "count": i,
+                    "log": f"[{i + 1}/{req.target}] 正在播放: {song_name}",
+                    "logType": "info"
+                })
+
+                # 播放歌曲，使用真实的歌曲时长
+                success = await player.play_song(req.song_id, source_id=album_id, duration=song_duration_seconds,play_time=req.interval, wait_before_report=True, song_name=song_name)
+
+                if success:
+                    await broadcast_task_update({
+                        "type": "play_count",
+                        "count": i + 1,
+                        "log": f"[{i + 1}/{req.target}] ✅ 完成: {song_name}",
+                        "logType": "success"
+                    })
+                else:
+                    await broadcast_task_update({
+                        "type": "play_count",
+                        "count": i,
+                        "log": f"播放失败: {song_name}",
+                        "logType": "error"
+                    })
+                    # 播放失败时继续尝试
+                    continue
+
+                # 播放间隔
+                if i < req.target - 1 and req.interval > 0:  # 最后一次不需要间隔
+                    await asyncio.sleep(req.interval)
+
+            await broadcast_task_update({
+                "type": "play_count",
+                "count": min(i + 1, req.target),
+                "log": f"任务完成! 共播放 {min(i + 1, req.target)} 次",
+                "logType": "success"
+            })
+
+        except Exception as e:
+            logger.error(f"单首歌刷取任务异常: {e}")
+            await broadcast_task_update({
+                "type": "play_count",
+                "count": 0,
+                "log": f"任务异常: {str(e)}",
+                "logType": "error"
+            })
+        finally:
+            task_state.play_count_running = False
+            await player.close()
+            await api.close()
+            await broadcast_task_update({"type": "task_status", "task": "play_count", "running": False})
+
+    task_state.play_count_task = asyncio.create_task(run_single_song_task())
+    return {"code": 200, "message": "任务已启动"}
+
+
+@router.post("/task/single-song/stop")
+async def stop_single_song_task():
+    """停止单首歌刷取任务"""
+    task_state.play_count_running = False
+    if task_state.play_count_task:
+        task_state.play_count_task.cancel()
+    return {"code": 200, "message": "任务已停止"}
 
 
 # ==================== 刷歌时长任务API ====================
@@ -976,8 +1127,9 @@ async def start_play_time_task(req: PlayTimeTaskRequest):
                 song = songs[song_index % len(songs)]
                 song_id = song.get("id")
                 song_name = song.get("name", "未知")
+                song_source_id = song.get("source_id", "")  # 获取来源ID（歌单或专辑ID）
                 
-                success = await player.play_song(song_id, source_id="", play_time=req.songDuration)
+                success = await player.play_song(song_id, source_id=song_source_id, play_time=req.songDuration, song_name=song_name)
                 
                 if success:
                     task_state.today_play_time += req.songDuration
@@ -1233,18 +1385,8 @@ async def _background_refresh_user(uid: str):
         try:
             user_info = await api.get_user_full_info(uid)
             if user_info.get("uid"):
-                # 同步歌单数据并获取准确的歌单数量
-                try:
-                    from core.player import MusicPlayer
-                    player = MusicPlayer(api)
-                    playlists = await player.get_user_playlists(uid)
-                    # 使用实际歌单数量覆盖
-                    user_info["playlist_count"] = len(playlists) if playlists else user_info.get("playlist_count", 0)
-                except Exception as e:
-                    logger.debug(f"同步歌单失败: {e}")
-                
                 await update_user_info(uid, user_info)
-                logger.info(f"后台更新用户信息成功: {user_info.get('nickname')} 歌单:{user_info.get('playlist_count')}")
+                logger.info(f"后台更新用户信息成功: {user_info.get('nickname')} Lv.{user_info.get('level')} 关注:{user_info.get('follows')} 粉丝:{user_info.get('followeds')} 歌单:{user_info.get('playlist_count')}")
         finally:
             await api.close()
     except Exception as e:
@@ -1487,10 +1629,102 @@ async def validate_current_cookie():
     
     api = NetEaseAPI(state.cookies)
     try:
-        result = await api.check_cookie_valid()
-        return result
+        result = await api.get_login_status()
+        is_valid = result.get("code") == 200
+        return {
+            "code": 200 if is_valid else 401,
+            "valid": is_valid,
+            "message": "Cookie有效" if is_valid else "Cookie无效"
+        }
     except Exception as e:
         logger.error(f"验证Cookie失败: {e}")
         return {"code": 500, "valid": False, "message": str(e)}
+    finally:
+        await api.close()
+
+
+# ==================== 歌曲详情API ====================
+
+@router.get("/song/detail/{song_id}")
+async def get_song_detail(song_id: str):
+    """获取单首歌曲详情"""
+    api = NetEaseAPI(state.cookies)
+    try:
+        result = await api.get_song_detail([song_id])
+        
+        if result.get("code") == 200 and result.get("songs"):
+            song = result["songs"][0]
+            return {
+                "code": 200,
+                "song": {
+                    "id": song.get("id"),
+                    "name": song.get("name"),
+                    "artists": [{"id": ar.get("id"), "name": ar.get("name")} for ar in song.get("ar", [])],
+                    "album": {
+                        "id": song.get("al", {}).get("id"),
+                        "name": song.get("al", {}).get("name"),
+                        "pic_url": song.get("al", {}).get("picUrl")
+                    },
+                    "duration": song.get("dt"),
+                    "popularity": song.get("pop"),
+                    "fee": song.get("fee"),  # 收费类型
+                    "publish_time": song.get("publishTime"),
+                    "lyrics": song.get("lyric")  # 歌词（如果有）
+                }
+            }
+        else:
+            raise HTTPException(status_code=404, detail="歌曲不存在")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取歌曲详情失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        await api.close()
+
+
+@router.post("/song/details")
+async def get_songs_detail(song_ids: List[str]):
+    """批量获取歌曲详情"""
+    if not song_ids:
+        raise HTTPException(status_code=400, detail="歌曲ID列表不能为空")
+    
+    if len(song_ids) > 50:
+        raise HTTPException(status_code=400, detail="一次最多查询50首歌曲")
+    
+    api = NetEaseAPI(state.cookies)
+    try:
+        result = await api.get_song_detail(song_ids)
+        
+        if result.get("code") == 200 and result.get("songs"):
+            songs = []
+            for song in result["songs"]:
+                songs.append({
+                    "id": song.get("id"),
+                    "name": song.get("name"),
+                    "artists": [{"id": ar.get("id"), "name": ar.get("name")} for ar in song.get("ar", [])],
+                    "album": {
+                        "id": song.get("al", {}).get("id"),
+                        "name": song.get("al", {}).get("name"),
+                        "pic_url": song.get("al", {}).get("picUrl")
+                    },
+                    "duration": song.get("dt"),
+                    "popularity": song.get("pop"),
+                    "fee": song.get("fee"),
+                    "publish_time": song.get("publishTime")
+                })
+            
+            return {
+                "code": 200,
+                "songs": songs,
+                "total": len(songs)
+            }
+        else:
+            return {"code": 404, "message": "未找到歌曲信息"}
+            
+    except Exception as e:
+        logger.error(f"批量获取歌曲详情失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         await api.close()

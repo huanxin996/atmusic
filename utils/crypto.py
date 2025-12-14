@@ -81,3 +81,42 @@ def encrypt_eapi(path: str, data: dict) -> dict:
     return {
         "params": encrypted.hex().upper()
     }
+
+
+def aes_decrypt(text: str, key: str) -> str:
+    """AES解密"""
+    iv = "0102030405060708"
+    cipher = AES.new(
+        key.encode("utf-8"),
+        AES.MODE_CBC,
+        iv.encode("utf-8")
+    )
+    encrypted_data = base64.b64decode(text)
+    decrypted = cipher.decrypt(encrypted_data)
+    # 移除PKCS7填充
+    padding_len = decrypted[-1]
+    return decrypted[:-padding_len].decode("utf-8", errors='ignore')
+
+
+def decrypt_response(encrypted_params: str, secret_key: str) -> dict:
+    """
+    解密网易云API响应
+    
+    Args:
+        encrypted_params: 加密的params数据（base64编码）
+        secret_key: 加密时使用的secret key
+        
+    Returns:
+        解密后的JSON字典
+    """
+    try:
+        # 第一次AES解密（使用secret_key）
+        decrypted_once = aes_decrypt(encrypted_params, secret_key)
+        # 第二次AES解密（使用NONCE）
+        decrypted_twice = aes_decrypt(decrypted_once, NONCE)
+        # 解析JSON
+        return json.loads(decrypted_twice)
+    except Exception as e:
+        print(f"解密失败: {e}")
+        return None
+

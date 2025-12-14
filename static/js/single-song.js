@@ -1,22 +1,29 @@
 /**
- * 刷歌数量页逻辑
+ * 单首歌刷取页逻辑
  */
-function playCountPage() {
+function singleSongPage() {
     return {
-        // 播放数量任务
-        playCount: {
-            today: 0,
-            target: 300,
+        // 单首歌任务
+        singleSong: {
+            songId: '',
+            target: 100,
             interval: 3,
-            source: 'recommend',  // recommend=每日推荐, discover=发现歌单
             running: false,
+            completed: 0,
+            songName: '',
             logs: []
         },
-        
+
+        // 计算属性
+        get progress() {
+            if (this.singleSong.target === 0) return 0;
+            return Math.round((this.singleSong.completed / this.singleSong.target) * 100);
+        },
+
         // 页面初始化
         async pageInit() {
             await this.loadTaskStatus();
-            
+
             // 监听WebSocket消息
             window.addEventListener('ws-message', (e) => {
                 const data = e.detail;
@@ -24,57 +31,65 @@ function playCountPage() {
                 if (data.type === 'task_status') {
                     // 处理新的task_status格式: {"type": "task_status", "task": "play_count", "running": true}
                     if (data.task === 'play_count') {
-                        this.playCount.running = data.running;
+                        this.singleSong.running = data.running;
                     }
                 }
-                // 刷歌数量任务更新（包含日志和计数）
+                // 单首歌任务更新（包含日志和计数）
                 if (data.type === 'play_count') {
                     if (data.count !== undefined) {
-                        this.playCount.today = data.count;
+                        this.singleSong.completed = data.count;
                     }
                     if (data.log) {
                         this.addLog(data.log, data.logType || 'info');
+                        // 从日志中提取歌曲名称
+                        if (data.log.includes('开始刷取歌曲:')) {
+                            const match = data.log.match(/开始刷取歌曲:\s*(.+)/);
+                            if (match) {
+                                this.singleSong.songName = match[1];
+                            }
+                        }
                     }
                 }
             });
-            
+
             // 监听用户切换
             window.addEventListener('user-switched', () => {
                 this.loadTaskStatus();
             });
         },
-        
+
         // 加载任务状态
         async loadTaskStatus() {
             try {
                 const response = await fetch('/api/task/status');
                 const data = await response.json();
                 if (data.code === 200) {
-                    this.playCount.running = data.play_count_running || false;
-                    this.playCount.today = data.play_count_today || 0;
+                    this.singleSong.running = data.play_count_running || false;
+                    this.singleSong.completed = data.play_count_today || 0;
                 }
             } catch (error) {
                 console.error('加载任务状态失败:', error);
             }
         },
-        
-        // 开始刷歌任务
-        async startPlayCountTask() {
-            if (this.playCount.running) return;
-            
+
+        // 开始单首歌任务
+        async startSingleSongTask() {
+            if (this.singleSong.running || !this.singleSong.songId) return;
+
             try {
-                const response = await fetch('/api/task/play-count/start', {
+                const response = await fetch('/api/task/single-song/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        target: this.playCount.target,
-                        interval: this.playCount.interval,
-                        source: this.playCount.source
+                        song_id: this.singleSong.songId,
+                        target: this.singleSong.target,
+                        interval: this.singleSong.interval
                     })
                 });
                 const data = await response.json();
                 if (data.code === 200) {
-                    this.playCount.running = true;
+                    this.singleSong.running = true;
+                    this.singleSong.completed = 0;
                     this.addLog('任务已启动', 'success');
                 } else {
                     this.addLog('启动失败: ' + data.message, 'error');
@@ -83,29 +98,29 @@ function playCountPage() {
                 this.addLog('启动失败: ' + error.message, 'error');
             }
         },
-        
-        // 停止刷歌任务
-        async stopPlayCountTask() {
+
+        // 停止单首歌任务
+        async stopSingleSongTask() {
             try {
-                const response = await fetch('/api/task/play-count/stop', { method: 'POST' });
+                const response = await fetch('/api/task/single-song/stop', { method: 'POST' });
                 const data = await response.json();
                 if (data.code === 200) {
-                    this.playCount.running = false;
+                    this.singleSong.running = false;
                     this.addLog('任务已停止', 'info');
                 }
             } catch (error) {
                 this.addLog('停止失败: ' + error.message, 'error');
             }
         },
-        
+
         // 添加日志
         addLog(message, type = 'info') {
             const now = new Date();
             const time = now.toLocaleTimeString('zh-CN', { hour12: false });
-            this.playCount.logs.unshift({ time, message, type });
+            this.singleSong.logs.unshift({ time, message, type });
             // 限制日志数量
-            if (this.playCount.logs.length > 100) {
-                this.playCount.logs.pop();
+            if (this.singleSong.logs.length > 100) {
+                this.singleSong.logs.pop();
             }
         }
     };

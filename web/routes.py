@@ -66,3 +66,9 @@ async def play_time_page(request: Request):
     """刷歌时长页"""
     return render_template("play-time.html")
 
+
+@router.get("/dashboard/single-song", response_class=HTMLResponse)
+async def single_song_page(request: Request):
+    """单首歌刷取页"""
+    return render_template("single-song.html")
+

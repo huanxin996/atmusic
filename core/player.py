@@ -35,7 +35,16 @@ class MusicPlayer:
                 # v3版本返回 data.dailySongs 数组（兼容）
                 if not songs:
                     songs = result.get("data", {}).get("dailySongs", [])
-                return [{"id": str(s["id"]), "name": s["name"]} for s in songs]
+                return [
+                    {
+                        "id": str(s["id"]),
+                        "name": s["name"],
+                        "duration": s.get("duration", s.get("dt", 240000)) // 1000,  # 毫秒转秒，默认240秒
+                        # 使用专辑ID作为sourceId（必选参数）- 支持 album 或 al 字段
+                        "source_id": str(s.get("album", s.get("al", {})).get("id", "") or "")
+                    }
+                    for s in songs
+                ]
         except Exception as e:
             logger.error(f"获取推荐歌曲失败: {str(e)}")
         return []
@@ -46,7 +55,15 @@ class MusicPlayer:
             result = await self.api.get_playlist_detail(playlist_id)
             if result.get("code") == 200:
                 tracks = result.get("playlist", {}).get("tracks", [])
-                return [{"id": str(t["id"]), "name": t["name"]} for t in tracks]
+                return [
+                    {
+                        "id": str(t["id"]),
+                        "name": t["name"],
+                        "duration": t.get("dt", 240000) // 1000,  # 毫秒转秒，默认240秒
+                        "source_id": str(playlist_id)  # 使用歌单ID作为sourceId（必选参数）
+                    }
+                    for t in tracks
+                ]
         except Exception as e:
             logger.error(f"获取歌单歌曲失败: {str(e)}")
         return []
@@ -130,7 +147,7 @@ class MusicPlayer:
             logger.error(f"从发现歌单获取歌曲失败: {e}")
             return []
     
-    async def play_song(self, song_id: str, source_id: str = "", duration: int = None, play_time: int = None) -> bool:
+    async def play_song(self, song_id: str, source_id: str = "", duration: int = None, play_time: int = None, wait_before_report: bool = True, song_name: str = None) -> bool:
         """
         播放/上报单首歌曲
         
@@ -139,23 +156,31 @@ class MusicPlayer:
             source_id: 来源歌单ID
             duration: 播放时长(秒), None则随机180-300秒
             play_time: 播放时长(秒), duration的别名
+            wait_before_report: 是否在上报前等待真实播放时长
+            song_name: 歌曲名称（用于日志显示）
         """
         # 优先使用 play_time，其次 duration，最后随机
-        if play_time is not None:
-            duration = play_time
-        elif duration is None:
+        if play_time is not None and wait_before_report:
+            logger.debug(f"等待时长: {play_time}秒")
+            await asyncio.sleep(play_time)
+        if duration is None:
             duration = random.randint(180, 300)
         
+        display_name = song_name or f"歌曲ID={song_id}"
+        
         try:
+            logger.debug(f"🎵 准备上报: song_id={song_id}, source_id={source_id}, duration={duration}秒")
+            
             result = await self.api.scrobble(song_id, source_id, duration)
             success = result.get("code") == 200
             if success:
-                logger.debug(f"✅ 上报成功: 歌曲ID={song_id}, 时长={duration}秒")
+                logger.debug(f"scrobble响应: {result}")
+                logger.info(f"✅ 上报成功: {display_name}, 时长={duration}秒, sourceId={source_id or '(使用歌曲ID)'}")
             else:
-                logger.warning(f"⚠️ 上报失败: 歌曲ID={song_id}, 响应={result}")
+                logger.warning(f"⚠️ 上报失败: {display_name}, 响应={result}")
             return success
         except Exception as e:
-            logger.error(f"❌ 播放歌曲失败: {str(e)}")
+            logger.error(f"❌ 播放歌曲失败: {display_name}, 错误: {str(e)}")
             return False
     
     async def batch_play(
@@ -204,12 +229,14 @@ class MusicPlayer:
                 song = songs[song_index % len(songs)]
                 song_id = song["id"]
                 song_name = song.get("name", "未知歌曲")
+                # 优先使用歌曲自带的source_id，其次使用传入的source_id
+                song_source_id = song.get("source_id", "") or source_id
                 
                 # 随机播放时长 (模拟真实听歌)
                 duration = random.randint(180, 300)
                 
                 # 上报播放
-                success = await self.play_song(song_id, source_id, duration)
+                success = await self.play_song(song_id, song_source_id, duration)
                 
                 if success:
                     played_count += 1

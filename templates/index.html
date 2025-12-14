@@ -61,6 +61,7 @@
                     <li x-show="hasCurrentUser" class="pt-4 border-t mt-4"><span class="px-4 text-xs text-gray-400 uppercase">任务</span></li>
                     <li x-show="hasCurrentUser"><a href="/dashboard/play-count" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>刷歌数量</span><span x-show="taskStatus.playCountRunning" class="ml-auto w-2 h-2 bg-green-500 rounded-full animate-pulse"></span></a></li>
                     <li x-show="hasCurrentUser"><a href="/dashboard/play-time" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>刷歌时长</span><span x-show="taskStatus.playTimeRunning" class="ml-auto w-2 h-2 bg-green-500 rounded-full animate-pulse"></span></a></li>
+                    <li x-show="hasCurrentUser"><a href="/dashboard/single-song" class="sidebar-item flex items-center space-x-3 px-4 py-3 rounded-lg text-gray-700"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg><span>单首歌刷取</span><span x-show="taskStatus.playCountRunning" class="ml-auto w-2 h-2 bg-green-500 rounded-full animate-pulse"></span></a></li>
                 </ul>
             </nav>
         </div>
@@ -124,11 +125,10 @@
                 <a href="/dashboard/playlists" class="text-red-500 text-sm font-medium hover:underline" :class="{'opacity-50 pointer-events-none': !hasCurrentUser}">查看详情</a>
             </div>
         </div>
-        <div class="grid grid-cols-2 gap-6">
+        <div class="grid grid-cols-3 gap-6">
             <div class="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition">
-                <div class="flex items-start justify-between mb-4">
-                    <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center"><svg class="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
-                    <span x-show="taskStatus.playCountRunning" class="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></span>运行中</span>
+                <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center mb-4"><svg class="w-6 h-6 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+                <span x-show="taskStatus.playCountRunning" class="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></span>运行中</span>
                 </div>
                 <h3 class="text-lg font-semibold text-gray-800 mb-2">刷歌数量</h3>
                 <p class="text-gray-500 text-sm mb-4">快速增加听歌数量，提升账号等级</p>
@@ -142,6 +142,15 @@
                 <h3 class="text-lg font-semibold text-gray-800 mb-2">刷歌时长</h3>
                 <p class="text-gray-500 text-sm mb-4">累计听歌时长，轻松完成每日任务</p>
                 <a href="/dashboard/play-time" class="inline-flex items-center px-4 py-2 bg-red-50 text-red-500 rounded-lg text-sm font-medium hover:bg-red-100 transition" :class="{'opacity-50 pointer-events-none': !hasCurrentUser}">开始刷时长</a>
+            </div>
+            <div class="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center"><svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg></div>
+                    <span x-show="taskStatus.playCountRunning" class="inline-flex items-center px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full"><span class="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-1"></span>运行中</span>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-800 mb-2">单首歌刷取</h3>
+                <p class="text-gray-500 text-sm mb-4">重复播放同一首歌，精准控制播放次数</p>
+                <a href="/dashboard/single-song" class="inline-flex items-center px-4 py-2 bg-red-50 text-red-500 rounded-lg text-sm font-medium hover:bg-red-100 transition" :class="{'opacity-50 pointer-events-none': !hasCurrentUser}">开始刷取</a>
             </div>
         </div>
     </main>

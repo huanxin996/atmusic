@@ -1,146 +1,79 @@
-# 网易云音乐刷歌助手 🎵
+# 网易云音乐刷歌助手
 
-一个自动化刷取网易云音乐每日听歌数量和时长的工具，具有简洁美观的Web界面。
+本项目用于自动化模拟播放以增加网易云音乐的听歌数量与时长。
 
-## ✨ 功能特性
+## 功能
 
-- 🔐 **二维码登录** - 安全便捷，无需输入密码
-- 👥 **多账号管理** - 支持登录多个账号，一键切换
-- 🎵 **自动刷歌** - 模拟真实听歌行为，安全高效
-- ⏱️ **刷歌时长** - 累计听歌时长，完成每日任务
-- 📊 **实时进度** - WebSocket推送，实时查看刷歌进度
-- 📱 **歌单选择** - 支持从每日推荐或指定歌单刷歌
-- 📈 **听歌排行** - 查看最近一周和历史听歌榜单
-- 👤 **用户详情** - 查看账户信息、等级、听歌数等（支持HTML解析）
-- 🎨 **美观界面** - 现代化多页面UI设计，响应式布局
-- ⚙️ **模块化架构** - 代码结构清晰，易于维护扩展
+- 二维码登录（基于网易云音乐授权）
+- 多账号管理与会话切换
+- 自动化播放（按数量或按时长）
+- 实时进度推送（通过 WebSocket）
+- 支持从推荐或指定歌单抓取歌曲
 
-## 📁 项目结构
+## 项目结构（简要）
 
-```text
-atmusic/
-├── main.py              # 应用入口
-├── config.py            # 配置管理
-├── requirements.txt     # 依赖列表
-├── .env.example         # 环境变量示例
-│
-├── core/                # 核心业务模块
-│   ├── __init__.py
-│   ├── api.py          # 网易云API封装(含HTML解析)
-│   ├── auth.py         # 认证模块(二维码登录)
-│   └── player.py       # 播放器模块(刷歌核心)
-│
-├── web/                 # Web服务模块
-│   ├── __init__.py
-│   ├── app.py          # FastAPI应用工厂
-│   ├── routes.py       # 页面路由
-│   └── api.py          # API路由(含WebSocket)
-│
-├── data/                # 数据模块
-│   ├── __init__.py
-│   ├── database.py     # 数据库配置
-│   └── models.py       # 数据模型
-│
-├── utils/               # 工具模块
-│   ├── __init__.py
-│   ├── logger.py       # 日志模块
-│   ├── crypto.py       # 加密工具
-│   ├── session.py      # 多用户会话管理
-│   └── scheduler.py    # 定时任务
-│
-├── templates/           # HTML模板
-│   ├── index.html      # 首页/控制面板
-│   ├── login.html      # 登录页
-│   ├── profile.html    # 用户详情
-│   ├── ranking.html    # 听歌排行
-│   ├── playlists.html  # 我的歌单
-│   ├── play-count.html # 刷歌数量
-│   └── play-time.html  # 刷歌时长
-│
-├── static/              # 静态资源
-│   ├── css/            # 样式文件
-│   └── js/             # JavaScript文件
-│
-├── logs/                # 日志目录
-└── data/                # SQLite数据库
+主要目录说明：
+
+- `main.py`：应用入口
+- `core/`：核心模块（网易云 API 封装、播放器）
+- `web/`：Web 服务与路由（包含 API 与 WebSocket）
+- `templates/`：前端 HTML 模板
+- `static/`：静态资源（CSS/JS）
+- `data/`：本地数据库与持久化
+
+## 快速开始
+
+1. 创建并激活 Python 虚拟环境：
+
+```powershell
+python -m venv venv
+venv\Scripts\activate
 ```
 
-## 🚀 快速开始
+2. 安装依赖：
 
-### 1. 安装依赖
-
-```bash
-# 创建虚拟环境(推荐)
-python -m venv venv
-
-# 激活虚拟环境
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
-
-# 安装依赖
+```powershell
 pip install -r requirements.txt
 ```
 
-### 2. 配置环境变量
+3. 复制配置示例并按需修改：
 
-```bash
-# 复制示例配置文件
-cp .env.example .env
-
-# 根据需要修改配置
+```powershell
+copy .env.example .env
 ```
 
-### 3. 启动应用
+4. 启动应用：
 
-```bash
+```powershell
 python main.py
 ```
 
-访问 `http://127.0.0.1:8080` 即可使用
+默认服务地址： http://127.0.0.1:8080
 
-## ⚙️ 配置说明
+## 主要配置项
 
-| 配置项 | 说明 | 默认值 |
-|--------|------|--------|
-| HOST | 服务器地址 | 127.0.0.1 |
-| PORT | 服务器端口 | 8080 |
-| DEBUG | 调试模式 | true |
-| PLAY_COUNT | 每日刷歌数量 | 300 |
-| PLAY_INTERVAL_MIN | 刷歌最小间隔(秒) | 1 |
-| PLAY_INTERVAL_MAX | 刷歌最大间隔(秒) | 3 |
+- `HOST`：服务器地址（默认 127.0.0.1）
+- `PORT`：服务器端口（默认 8080）
+- `DEBUG`：调试模式（true/false）
+- `PLAY_COUNT`：默认刷歌数量
+- `PLAY_INTERVAL_MIN` / `PLAY_INTERVAL_MAX`：播放间隔范围（秒）
 
-## 🔧 技术栈
+## 技术栈
 
-- **后端**: Python 3.9+ / FastAPI / SQLAlchemy
-- **前端**: TailwindCSS / Alpine.js
-- **数据库**: SQLite
-- **其他**: httpx[brotli] / qrcode / loguru
+- 后端：Python / FastAPI
+- 前端：TailwindCSS / Alpine.js
+- 数据库：SQLite（项目内置支持）
 
-## 📖 使用说明
+## 使用注意
 
-1. **登录**: 打开应用后点击"添加"，使用网易云音乐APP扫描二维码
-2. **选择账号**: 登录后在左侧账号列表中点击选择要使用的账号
-3. **查看详情**: 进入"用户详情"查看账号信息（支持从网页解析更多数据）
-4. **选择歌单**: 可以选择"每日推荐"或自己的歌单
-5. **刷歌数量**: 设置要刷的歌曲数量，点击"开始刷歌"
-6. **刷歌时长**: 设置累计时长，完成每日听歌任务
+仅限学习和研究用途。请遵守相关服务条款与法律法规，任何操作风险由使用者自行承担。
 
-## ⚠️ 免责声明
+## TODO
 
-本项目仅供学习交流使用，请勿用于商业目的。使用本工具产生的任何后果由用户自行承担。
+- 定时任务功能
+- 听歌历史记录
+- Docker 部署支持
 
-## 📝 TODO
-
-- [√] 多账号支持
-- [√] 听歌排行榜
-- [√] 用户详情页
-- [ ] 定时任务功能
-- [ ] 听歌历史记录
-- [ ] Docker部署支持
-- [ ] 移动端适配优化
-
-## 📄 License
+## 许可证
 
 Apache License 2.0

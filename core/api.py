@@ -21,6 +21,7 @@ class NetEaseAPI:
     """网易云音乐API"""
     
     BASE_URL = "https://music.163.com"
+    WEAPI_URL = "https://music.163.com/weapi"
     # 使用更真实的浏览器UA
     USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     
@@ -60,17 +61,17 @@ class NetEaseAPI:
             "User-Agent": self.USER_AGENT,
             "Referer": f"{self.BASE_URL}/",
             "Origin": self.BASE_URL,
-            "Accept": "application/json, text/plain, */*",
+            "Accept": "*/*",
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": "gzip, deflate, br, zstd",
             "Connection": "keep-alive",
             "Content-Type": "application/x-www-form-urlencoded",
-            "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+            "sec-ch-ua": '"Microsoft Edge";v="131", "Chromium";v="131", "Not A(Brand";v="24"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Site": "same-origin",  # 同域请求使用 same-origin
         }
     
     def get_current_headers(self) -> Dict[str, str]:
@@ -81,14 +82,42 @@ class NetEaseAPI:
         """设置Cookie"""
         self.cookies = cookies
     
+    def _get_csrf_token(self) -> str:
+        """从Cookie中提取CSRF Token"""
+        if not self.cookies:
+            logger.debug("Cookie 为空，csrf_token 返回空字符串")
+            return ""
+        
+        # 尝试从cookie中提取__csrf
+        import re
+        match = re.search(r'__csrf=([^;]+)', self.cookies)
+        if match:
+            csrf = match.group(1)
+            logger.debug(f"从 __csrf 提取到 csrf_token: {csrf[:8]}...")
+            return csrf
+        
+        # 如果没有 __csrf，返回空字符串
+        # 注意：不能使用 MUSIC_U 作为 csrf_token，那是错误的！
+        logger.warning("Cookie 中没有 __csrf 字段，csrf_token 返回空字符串")
+        return ""
+    
     async def _request(
         self,
         method: str,
         url: str,
         data: Dict = None,
-        encrypt: bool = True
+        encrypt: bool = True,
+        skip_csrf_in_data: bool = False
     ) -> Dict[str, Any]:
-        """发送请求"""
+        """发送请求
+        
+        Args:
+            method: HTTP方法
+            url: 请求URL
+            data: 请求数据
+            encrypt: 是否加密
+            skip_csrf_in_data: 是否跳过在data中添加csrf_token (用于scrobble等需要在URL中传csrf_token的场景)
+        """
         headers = self._get_headers()
         
         # 构建Cookie，包含设备信息
@@ -99,7 +128,13 @@ class NetEaseAPI:
             headers["Cookie"] = base_cookie
         
         if encrypt and data:
+            # 参考 NeteaseCloudMusicApiEnhanced: csrf_token 在加密前添加到 data 中
+            # 但如果 skip_csrf_in_data=True，则跳过（用于scrobble等已在URL中包含csrf_token的情况）
+            if not skip_csrf_in_data:
+                csrf_token = self._get_csrf_token()
+                data["csrf_token"] = csrf_token
             data = encrypt_request(data)
+            logger.debug(f"加密后的数据: {data}")
         
         try:
             if method.upper() == "GET":
@@ -112,34 +147,34 @@ class NetEaseAPI:
                 logger.warning(f"响应内容为空: {url}")
                 return {"code": -1, "message": "响应内容为空"}
             
-            # 处理Brotli压缩
             content_encoding = response.headers.get('content-encoding', '')
+            
+            # 尝试直接解析JSON（httpx通常已自动解压）
+            try:
+                return response.json()
+            except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                logger.debug(f"JSON直接解析失败: {e}")
+            
+            # 如果直接解析失败，尝试手动Brotli解压
             if content_encoding == 'br' and HAS_BROTLI:
                 try:
                     decompressed = brotli.decompress(response.content)
                     return json.loads(decompressed.decode('utf-8'))
                 except Exception as e:
-                    logger.warning(f"Brotli解压失败，尝试其他方式: {e}")
+                    logger.debug(f"Brotli解压失败: {e}")
             
-            # 处理响应编码问题
+            # 尝试其他编码
             try:
-                return response.json()
-            except (UnicodeDecodeError, json.JSONDecodeError) as e:
-                logger.warning(f"JSON解析失败: {e}")
-                # 如果UTF-8解码失败，尝试其他编码
-                try:
-                    content = response.content.decode('utf-8', errors='ignore')
-                    if content.strip():
-                        return json.loads(content)
-                except json.JSONDecodeError:
-                    pass
-                
-                # 记录更多调试信息
-                logger.error(f"响应内容不是有效JSON")
-                logger.error(f"响应状态码: {response.status_code}")
-                logger.error(f"Content-Encoding: {content_encoding}")
-                logger.error(f"原始字节内容前100字节: {response.content[:100]}")
-                return {"code": -1, "message": "响应格式错误"}
+                content = response.content.decode('utf-8', errors='ignore')
+                if content.strip():
+                    return json.loads(content)
+            except json.JSONDecodeError:
+                pass
+            
+            # 记录更多调试信息
+            logger.error(f"响应内容不是有效JSON, URL: {url}")
+            logger.error(f"响应状态码: {response.status_code}")
+            return {"code": -1, "message": "响应格式错误"}
         except Exception as e:
             logger.error(f"请求失败: {url}, 错误: {str(e)}")
             return {"code": -1, "message": str(e)}
@@ -335,8 +370,10 @@ class NetEaseAPI:
     
     async def get_user_detail(self, uid: str) -> Dict[str, Any]:
         """获取用户详情"""
+        csrf_token = self._get_csrf_token()
         url = f"{self.BASE_URL}/weapi/v1/user/detail/{uid}"
-        return await self._request("POST", url, {})
+        data = {"csrf_token": csrf_token}
+        return await self._request("POST", url, data)
     
     async def get_user_level(self) -> Dict[str, Any]:
         """
@@ -357,15 +394,20 @@ class NetEaseAPI:
                 }
             }
         """
+        csrf_token = self._get_csrf_token()
         url = f"{self.BASE_URL}/weapi/user/level"
-        return await self._request("POST", url, {})
+        data = {
+            "csrf_token": csrf_token
+        }
+        return await self._request("POST", url, data)
     
     # ==================== 歌曲相关 ====================
     
     async def get_recommend_songs(self) -> Dict[str, Any]:
         """获取每日推荐歌曲 - 使用v2版本API"""
-        url = f"{self.BASE_URL}/weapi/v2/discovery/recommend/songs"
-        return await self._request("POST", url, {})
+        csrf_token = self._get_csrf_token()
+        url = f"{self.BASE_URL}/weapi/v2/discovery/recommend/songs?csrf_token={csrf_token}"
+        return await self._request("POST", url, {"csrf_token": csrf_token})
     
     async def get_playlist_detail(self, playlist_id: str) -> Dict[str, Any]:
         """获取歌单详情"""
@@ -383,16 +425,40 @@ class NetEaseAPI:
         }
         return await self._request("POST", url, data)
     
+    async def get_song_detail(self, song_ids: List[str]) -> Dict[str, Any]:
+        """获取歌曲详情"""
+        csrf_token = self._get_csrf_token()
+        url = f"{self.BASE_URL}/weapi/v3/song/detail?csrf_token={csrf_token}"
+        data = {
+            "c": json.dumps([{"id": song_id} for song_id in song_ids])
+        }
+        return await self._request("POST", url, data)
+    
     async def scrobble(self, song_id: str, source_id: str = "", time: int = 240) -> Dict[str, Any]:
         """
         上报听歌记录(刷歌核心接口)
         
+        参考 NeteaseCloudMusicApiEnhanced/api-enhanced 的实现：
+        - 域名: music.163.com (同域名)
+        - URL: /weapi/feedback/weblog (无 csrf_token 参数)
+        - csrf_token 在加密数据中
+        
         Args:
             song_id: 歌曲ID
-            source_id: 来源ID(歌单ID等)
+            source_id: 来源ID(歌单ID或专辑ID)
             time: 听歌时长(秒)
         """
+        # 获取 csrf_token
+        csrf_token = self._get_csrf_token()
+        
+        # 使用 music.163.com 域名，与官方 API 一致
         url = f"{self.BASE_URL}/weapi/feedback/weblog"
+        
+        # sourceId 必须是有效值
+        effective_source_id = source_id if source_id else str(song_id)
+        
+        # 数据结构：与 NeteaseCloudMusicApiEnhanced 保持一致
+        # csrf_token 在数据中（request.js 中自动添加）
         data = {
             "logs": json.dumps([{
                 "action": "play",
@@ -400,14 +466,25 @@ class NetEaseAPI:
                     "download": 0,
                     "end": "playend",
                     "id": int(song_id),
-                    "sourceId": source_id,
-                    "time": time,
+                    "sourceId": str(effective_source_id),
+                    "time": int(time),
                     "type": "song",
-                    "wifi": 0
+                    "wifi": 0,
+                    "source": "list",
+                    "mainsite": 1,
+                    "content": ""
                 }
-            }])
+            }]),
+            "csrf_token": csrf_token
         }
-        return await self._request("POST", url, data)
+        
+        logger.info(f"Scrobble 请求: song_id={song_id}, source_id={effective_source_id}, time={time}")
+        logger.debug(f"Scrobble data: {data}")
+        
+        # 使用标准请求方法（同域名）
+        result = await self._request("POST", url, data)
+        logger.info(f"Scrobble 响应: {result}")
+        return result
     
     # ==================== 用户相关 ====================
     
@@ -704,19 +781,21 @@ class NetEaseAPI:
         if uid:
             try:
                 detail_result = await self.get_user_detail(uid)
+                logger.debug(f"用户详情API返回: code={detail_result.get('code')}, listenSongs={detail_result.get('listenSongs')}, createDays={detail_result.get('createDays')}")
                 if detail_result.get("code") == 200:
                     user_info["listen_songs"] = detail_result.get("listenSongs", 0)
                     user_info["create_days"] = detail_result.get("createDays", 0)
                     
                     profile = detail_result.get("profile", {})
                     if profile:
+                        logger.debug(f"用户详情profile: follows={profile.get('follows')}, followeds={profile.get('followeds')}, eventCount={profile.get('eventCount')}, playlistCount={profile.get('playlistCount')}")
                         if not user_info.get("nickname"):
                             user_info["nickname"] = profile.get("nickname", "")
                         if not user_info.get("avatar_url"):
                             user_info["avatar_url"] = profile.get("avatarUrl", "")
                         if not user_info.get("create_time"):
                             user_info["create_time"] = profile.get("createTime", 0)
-                        # 从详情页获取基础统计（后续会被专门API覆盖）
+                        # 从详情页获取基础统计
                         user_info["follows"] = profile.get("follows", 0)
                         user_info["followeds"] = profile.get("followeds", 0)
                         user_info["event_count"] = profile.get("eventCount", 0)
@@ -736,38 +815,59 @@ class NetEaseAPI:
         except Exception as e:
             logger.warning(f"API获取用户等级失败: {e}")
         
-        # 使用专门API获取准确的关注数
+        # 只有当 get_user_detail 没有返回有效数据时，才尝试从专门API获取
+        # get_user_detail 的 profile 已经包含准确的 follows/followeds 数据
         if uid:
-            try:
-                follows_result = await self.get_user_follows(uid, limit=1)
-                if follows_result.get("code") == 200:
-                    # 从分页信息获取总数，或者使用返回的follow列表长度
-                    # 通常API会返回更准确的数量
-                    pass  # 关注数已从profile获取
-            except Exception as e:
-                logger.debug(f"获取关注列表失败: {e}")
+            # 如果关注数为0，尝试从专门API获取
+            if user_info.get("follows", 0) == 0:
+                try:
+                    follows_result = await self.get_user_follows(uid, limit=100)
+                    logger.debug(f"关注API完整返回keys: {follows_result.keys() if isinstance(follows_result, dict) else 'not dict'}")
+                    if follows_result.get("code") == 200:
+                        follow_list = follows_result.get("follow", [])
+                        # 如果没有更多数据，列表长度就是总数
+                        if follow_list and not follows_result.get("more", False):
+                            user_info["follows"] = len(follow_list)
+                        logger.debug(f"关注API返回: 列表{len(follow_list)}个, more={follows_result.get('more')}")
+                except Exception as e:
+                    logger.debug(f"获取关注列表失败: {e}")
             
-            # 使用专门API获取准确的粉丝数
-            try:
-                followers_result = await self.get_user_followers(uid, limit=1)
-                if followers_result.get("code") == 200:
-                    pass  # 粉丝数已从profile获取
-            except Exception as e:
-                logger.debug(f"获取粉丝列表失败: {e}")
+            # 如果粉丝数为0，尝试从专门API获取
+            if user_info.get("followeds", 0) == 0:
+                try:
+                    followers_result = await self.get_user_followeds(uid, limit=100)
+                    logger.debug(f"粉丝API完整返回keys: {followers_result.keys() if isinstance(followers_result, dict) else 'not dict'}")
+                    if followers_result.get("code") == 200:
+                        followeds_list = followers_result.get("followeds", [])
+                        # 如果没有更多数据，列表长度就是总数
+                        if followeds_list and not followers_result.get("more", False):
+                            user_info["followeds"] = len(followeds_list)
+                        logger.debug(f"粉丝API返回: 列表{len(followeds_list)}个, more={followers_result.get('more')}")
+                except Exception as e:
+                    logger.debug(f"获取粉丝列表失败: {e}")
             
-            # 歌单数量已从profile中获取，这里不再重复调用API
-            # 歌单数据会在其他地方（如歌单页面）调用 get_user_playlists 时同步到数据库
+            # 如果歌单数为0，尝试从专门API获取
+            if user_info.get("playlist_count", 0) == 0:
+                try:
+                    playlists_result = await self.get_user_playlists(uid, limit=1000)
+                    if playlists_result.get("code") == 200:
+                        playlist_list = playlists_result.get("playlist", [])
+                        if playlist_list:
+                            user_info["playlist_count"] = len(playlist_list)
+                        logger.debug(f"歌单API返回: {len(playlist_list)} 个歌单")
+                except Exception as e:
+                    logger.debug(f"获取歌单列表失败: {e}")
             
-            # 使用动态API获取准确的动态数
-            try:
-                events_result = await self.get_user_events(uid, limit=1)
-                if events_result.get("code") == 200:
-                    # 动态API通常会返回总数
-                    total = events_result.get("total", events_result.get("size", 0))
-                    if total > 0:
-                        user_info["event_count"] = total
-            except Exception as e:
-                logger.debug(f"获取动态列表失败: {e}")
+            # 如果动态数为0，尝试从专门API获取
+            if user_info.get("event_count", 0) == 0:
+                try:
+                    events_result = await self.get_user_events(uid, limit=1)
+                    if events_result.get("code") == 200:
+                        total = events_result.get("total", events_result.get("size", 0))
+                        if total and total > 0:
+                            user_info["event_count"] = total
+                except Exception as e:
+                    logger.debug(f"获取动态列表失败: {e}")
         
         logger.info(f"获取用户完整信息: {user_info.get('nickname')} Lv.{user_info.get('level')} 关注{user_info.get('follows')} 粉丝{user_info.get('followeds')} 歌单{user_info.get('playlist_count')} 动态{user_info.get('event_count')}")
         

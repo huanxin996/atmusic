@@ -56,7 +56,8 @@ function profilePage() {
                         followeds: info.followeds || 0,
                         playlistCount: info.playlist_count || 0,
                         eventCount: info.event_count || 0,
-                        createTime: info.create_time || '-',
+                        // 将时间戳格式化为 YYYY-MM-DD（支持秒或毫秒）
+                        createTime: this.formatDate(info.create_time),
                         createDays: info.create_days || 0,
                         location: info.location || '未设置'
                     };
@@ -94,6 +95,22 @@ function profilePage() {
         formatNumber(num) {
             if (!num) return '0';
             return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+        },
+
+        // 将时间戳（秒或毫秒）格式化为 YYYY-MM-DD，空值或无效返回 '-'
+        formatDate(ts) {
+            if (ts === null || ts === undefined || ts === '' || ts === 0) return '-';
+            // 确保是数字
+            const n = Number(ts);
+            if (!isFinite(n)) return '-';
+            // 如果看起来像秒（小于 1e11），则转换为毫秒
+            const tsMs = n < 1e11 ? n * 1000 : n;
+            const d = new Date(tsMs);
+            if (isNaN(d.getTime())) return '-';
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
         },
         
         // 获取性别文本
