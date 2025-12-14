@@ -177,7 +177,7 @@
                         <div class="text-sm text-gray-500">目标数量</div>
                     </div>
                     <div class="text-center">
-                        <div class="text-3xl font-bold text-green-500" x-text="progress + '%'">0%</div>
+                        <div class="text-3xl font-bold text-green-500" x-text="progress() + '%'">0%</div>
                         <div class="text-sm text-gray-500">完成进度</div>
                     </div>
                 </div>
@@ -201,25 +201,15 @@
                     </div>
                 </div>
 
-                <div id="singleSongLogs" class="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
-                    <div x-show="singleSong.logs.length === 0" class="text-center text-gray-500 py-8">
-                        暂无日志
-                    </div>
-                    <div x-show="singleSong.logs.length > 0">
-                    <div x-for="log in singleSong.logs" :key="log.id"
-                        class="mb-2 pb-2 border-b border-gray-200 last:border-b-0">
-                            <div class="flex items-start space-x-3">
-                                <span class="text-xs text-gray-400 w-16 flex-shrink-0" x-text="log.time"></span>
-                                <span :class="{
-                                    'text-green-600': log.type === 'success',
-                                    'text-red-600': log.type === 'error',
-                                    'text-blue-600': log.type === 'info',
-                                    'text-yellow-600': log.type === 'warning',
-                                    'text-gray-600': !log.type || log.type === 'default'
-                                }" x-text="log.message"></span>
-                            </div>
+                <div id="singleSongLogs" class="bg-gray-900 rounded-xl p-4 h-64 overflow-y-auto log-console text-sm">
+                    <template x-for="log in singleSong.logs" :key="log.id">
+                        <div class="py-1">
+                            <span class="text-gray-500" x-text="log.time"></span>
+                            <span :class="log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-green-400' : 'text-gray-300'"
+                                  x-text="' ' + log.message"></span>
                         </div>
-                    </div>
+                    </template>
+                    <div x-show="singleSong.logs.length === 0" class="text-gray-500">暂无日志...</div>
                 </div>
             </div>
         </div>

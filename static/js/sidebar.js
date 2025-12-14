@@ -2,6 +2,14 @@
  * 侧边栏通用逻辑
  */
 function sidebarApp() {
+    // 共享任务状态，确保所有页面的侧栏状态同步
+    if (!window.sharedTaskStatus) {
+        window.sharedTaskStatus = {
+            playCountRunning: false,
+            playTimeRunning: false
+        };
+    }
+    
     return {
         // 当前页面标识
         currentPage: window.CURRENT_PAGE || '',
@@ -16,11 +24,8 @@ function sidebarApp() {
         requireLogin: window.REQUIRE_LOGIN !== false,
         isLoggedIn: false,
         
-        // 任务状态
-        taskStatus: {
-            playCountRunning: false,
-            playTimeRunning: false
-        },
+        // 任务状态（共享）
+        taskStatus: window.sharedTaskStatus,
         
     // WebSocket
     ws: null,
@@ -38,6 +43,12 @@ function sidebarApp() {
         // 初始化
         async init() {
             await this.loadUsers();
+            // 确保组件内的 taskStatus 引用到 window.sharedTaskStatus，便于 Alpine 响应式更新
+            if (window.sharedTaskStatus) {
+                this.taskStatus = window.sharedTaskStatus;
+            } else {
+                window.sharedTaskStatus = this.taskStatus;
+            }
             this.connectWebSocket();
             
             // 启动用户状态定时刷新（每30秒刷新一次，保持状态同步）
@@ -151,16 +162,22 @@ function sidebarApp() {
                         try {
                             const data = JSON.parse(event.data);
                             if (data.type === 'task_status') {
+                                // 同步到组件状态与全局共享状态（冗余写入，但保证所有 Alpine 组件能实时响应）
                                 if (data.task === 'play_count') {
-                                    this.taskStatus.playCountRunning = data.running;
+                                    this.taskStatus.playCountRunning = !!data.running;
+                                    window.sharedTaskStatus.playCountRunning = !!data.running;
                                 } else if (data.task === 'play_time') {
-                                    this.taskStatus.playTimeRunning = data.running;
+                                    this.taskStatus.playTimeRunning = !!data.running;
+                                    window.sharedTaskStatus.playTimeRunning = !!data.running;
                                 }
+                                // 后端可能一次性发送两个字段，分别处理
                                 if (data.play_count_running !== undefined) {
-                                    this.taskStatus.playCountRunning = data.play_count_running;
+                                    this.taskStatus.playCountRunning = !!data.play_count_running;
+                                    window.sharedTaskStatus.playCountRunning = !!data.play_count_running;
                                 }
                                 if (data.play_time_running !== undefined) {
-                                    this.taskStatus.playTimeRunning = data.play_time_running;
+                                    this.taskStatus.playTimeRunning = !!data.play_time_running;
+                                    window.sharedTaskStatus.playTimeRunning = !!data.play_time_running;
                                 }
                             }
                             if (data.type === 'task_status') {
@@ -197,8 +214,14 @@ function sidebarApp() {
                         try {
                             const data = JSON.parse(event.data);
                             if (data.type === 'task_status') {
-                                if (data.task === 'play_count') this.taskStatus.playCountRunning = data.running;
-                                if (data.task === 'play_time') this.taskStatus.playTimeRunning = data.running;
+                                if (data.task === 'play_count') {
+                                    this.taskStatus.playCountRunning = !!data.running;
+                                    window.sharedTaskStatus.playCountRunning = !!data.running;
+                                }
+                                if (data.task === 'play_time') {
+                                    this.taskStatus.playTimeRunning = !!data.running;
+                                    window.sharedTaskStatus.playTimeRunning = !!data.running;
+                                }
                                 window.dispatchEvent(new CustomEvent('ws-message', { detail: data }));
                             }
                         } catch (err) {

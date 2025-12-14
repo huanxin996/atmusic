@@ -16,25 +16,24 @@ function singleSongPage() {
         // 日志自动滚动选项（true = 新日志到达时自动滚动到顶部）
         autoScrollLogs: true,
 
-        // 计算属性
-        get progress() {
-            if (this.singleSong.target === 0) return 0;
-            return Math.round((this.singleSong.completed / this.singleSong.target) * 100);
+        // 计算进度（作为方法以确保与 Alpine 的响应式更新兼容）
+        progress() {
+            try {
+                const target = Number(this.singleSong.target) || 0;
+                const completed = Number(this.singleSong.completed) || 0;
+                if (target <= 0) return 0;
+                const pct = Math.round((completed / target) * 100);
+                // 限制在 0-100 之间
+                if (!isFinite(pct) || isNaN(pct)) return 0;
+                return Math.max(0, Math.min(100, pct));
+            } catch (e) {
+                return 0;
+            }
         },
 
         // 页面初始化
         async pageInit() {
-            await this.loadTaskStatus();
-
-            // 监听来自侧边栏的状态更新（仅状态类消息）
-            window.addEventListener('ws-message', (e) => {
-                const data = e.detail;
-                if (data.type === 'task_status' && data.task === 'play_count') {
-                    this.singleSong.running = data.running;
-                }
-            });
-
-            // 管理化的任务 WebSocket：支持自动重连与 unload 清理
+            await this.loadTaskStatus();            // 管理化的任务 WebSocket：支持自动重连与 unload 清理
             this.taskWs = null;
             this._taskWsReconnectTimer = null;
             this._taskWsAttempts = 0;
@@ -65,6 +64,8 @@ function singleSongPage() {
                             }
                             if (data.type === 'task_status' && data.task === 'play_count') {
                                 this.singleSong.running = data.running;
+                                // 同步共享状态，确保侧边栏绿点与页面一致
+                                window.sharedTaskStatus.playCountRunning = data.running;
                             }
                         } catch (err) {
                             console.error('解析任务WS消息失败:', err);
@@ -103,12 +104,28 @@ function singleSongPage() {
                 if (this.taskWs && (this.taskWs.readyState === WebSocket.OPEN || this.taskWs.readyState === WebSocket.CONNECTING)) {
                     try { this.taskWs.close(); } catch (e) { /* ignore */ }
                 }
+                try { window.removeEventListener('ws-message', this._wsMessageHandler); } catch (e) { }
             };
             window.addEventListener('beforeunload', closeTaskWs);
             window.addEventListener('unload', closeTaskWs);
 
             // 监听用户切换
             window.addEventListener('user-switched', () => { this.loadTaskStatus(); });
+
+            // 监听全局任务状态事件，确保当其他页面改变任务时本页也能同步
+            this._wsMessageHandler = (e) => {
+                try {
+                    const data = e.detail;
+                    if (!data || data.type !== 'task_status') return;
+                    if (data.task === 'play_count') {
+                        this.singleSong.running = !!data.running;
+                    }
+                    if (data.play_count_running !== undefined) {
+                        this.singleSong.running = !!data.play_count_running;
+                    }
+                } catch (err) { }
+            };
+            window.addEventListener('ws-message', this._wsMessageHandler);
         },
 
         // 加载任务状态
@@ -129,11 +146,11 @@ function singleSongPage() {
         // 开始单首歌任务
         async startSingleSongTask() {
             // 互斥检查：不能在刷时长任务或批量刷歌运行时启动单首刷歌
-            if (this.taskStatus && this.taskStatus.playTimeRunning) {
+            if (window.sharedTaskStatus && window.sharedTaskStatus.playTimeRunning) {
                 this.addLog('任务无法启动: 刷歌时长任务正在运行，请先停止它。', 'error');
                 return;
             }
-            if (this.taskStatus && this.taskStatus.playCountRunning) {
+            if (window.sharedTaskStatus && window.sharedTaskStatus.playCountRunning) {
                 this.addLog('任务无法启动: 另一个刷歌任务(批量或单首)正在运行，请先停止它。', 'error');
                 return;
             }
@@ -153,6 +170,9 @@ function singleSongPage() {
                 if (data.code === 200) {
                     this.singleSong.running = true;
                     this.singleSong.completed = 0;
+                    // 立即同步侧边栏状态，后端广播也会同步但这里给用户即时反馈
+                    window.sharedTaskStatus.playCountRunning = true;
+                    if (this.taskStatus) this.taskStatus.playCountRunning = true;
                     this.addLog('任务已启动', 'success');
                 } else {
                     this.addLog('启动失败: ' + data.message, 'error');
@@ -169,6 +189,9 @@ function singleSongPage() {
                 const data = await response.json();
                 if (data.code === 200) {
                     this.singleSong.running = false;
+                    // 同步侧边栏状态
+                    window.sharedTaskStatus.playCountRunning = false;
+                    if (this.taskStatus) this.taskStatus.playCountRunning = false;
                     this.addLog('任务已停止', 'info');
                 }
             } catch (error) {

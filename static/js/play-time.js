@@ -17,13 +17,6 @@ function playTimePage() {
         // 页面初始化
         async pageInit() {
             await this.loadTaskStatus();
-            // 监听来自侧边栏的状态更新（仅状态类消息）
-            window.addEventListener('ws-message', (e) => {
-                const data = e.detail;
-                if (data.type === 'task_status' && data.task === 'play_time') {
-                    this.playTime.running = data.running;
-                }
-            });
 
             // 管理化的任务 WS：自动重连 + 页面 unload 清理
             this.taskWs = null;
@@ -47,6 +40,8 @@ function playTimePage() {
                             }
                             if (data.type === 'task_status' && data.task === 'play_time') {
                                 this.playTime.running = data.running;
+                                // 同步共享状态，确保侧边栏绿点与页面一致
+                                window.sharedTaskStatus.playTimeRunning = data.running;
                             }
                         } catch (err) {
                             console.error('解析任务WS消息失败:', err);
@@ -77,6 +72,8 @@ function playTimePage() {
                 if (this.taskWs && (this.taskWs.readyState === WebSocket.OPEN || this.taskWs.readyState === WebSocket.CONNECTING)) {
                     try { this.taskWs.close(); } catch (e) { }
                 }
+                // 移除全局 ws-message 事件监听
+                try { window.removeEventListener('ws-message', this._wsMessageHandler); } catch (e) { }
             };
             window.addEventListener('beforeunload', closeTaskWs);
             window.addEventListener('unload', closeTaskWs);
@@ -85,6 +82,23 @@ function playTimePage() {
             window.addEventListener('user-switched', () => {
                 this.loadTaskStatus();
             });
+
+            // 监听侧边栏/全局的任务状态事件（确保当别的页面启动/停止任务时，本页面也能同步更新运行状态）
+            this._wsMessageHandler = (e) => {
+                try {
+                    const data = e.detail;
+                    if (!data || data.type !== 'task_status') return;
+                    if (data.task === 'play_time') {
+                        this.playTime.running = !!data.running;
+                    }
+                    if (data.play_time_running !== undefined) {
+                        this.playTime.running = !!data.play_time_running;
+                    }
+                } catch (err) {
+                    // ignore
+                }
+            };
+            window.addEventListener('ws-message', this._wsMessageHandler);
         },
         
         // 加载任务状态
@@ -104,7 +118,7 @@ function playTimePage() {
         // 开始刷时长任务
         async startPlayTimeTask() {
             // 互斥检查：不能在刷歌数量或单首刷歌运行时启动刷时长
-            if (this.taskStatus && this.taskStatus.playCountRunning) {
+            if (window.sharedTaskStatus && window.sharedTaskStatus.playCountRunning) {
                 this.addLog('任务无法启动: 刷歌数量/单首刷歌任务正在运行，请先停止它。', 'error');
                 return;
             }
@@ -123,6 +137,9 @@ function playTimePage() {
                 const data = await response.json();
                 if (data.code === 200) {
                     this.playTime.running = true;
+                    // 立即同步侧边栏状态
+                    window.sharedTaskStatus.playTimeRunning = true;
+                    if (this.taskStatus) this.taskStatus.playTimeRunning = true;
                     this.addLog('任务已启动', 'success');
                 } else {
                     this.addLog('启动失败: ' + data.message, 'error');
@@ -139,6 +156,8 @@ function playTimePage() {
                 const data = await response.json();
                 if (data.code === 200) {
                     this.playTime.running = false;
+                    window.sharedTaskStatus.playTimeRunning = false;
+                    if (this.taskStatus) this.taskStatus.playTimeRunning = false;
                     this.addLog('任务已停止', 'info');
                 }
             } catch (error) {
