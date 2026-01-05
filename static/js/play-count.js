@@ -9,6 +9,8 @@ function playCountPage() {
             target: 300,
             interval: 3,
             source: 'recommend',  // recommend=每日推荐, discover=发现歌单
+            category: '',  // 歌单分类（仅discover模式有效）
+            hot: false,  // 是否选择最热歌单（仅discover模式有效）
             running: false,
             logs: []
         },
@@ -126,14 +128,22 @@ function playCountPage() {
             if (this.playCount.running) return;
             
             try {
+                const requestBody = {
+                    target: this.playCount.target,
+                    interval: this.playCount.interval,
+                    source: this.playCount.source
+                };
+                
+                // 如果选择发现歌单，添加分类和热度参数
+                if (this.playCount.source === 'discover') {
+                    requestBody.category = this.playCount.category || null;
+                    requestBody.hot = this.playCount.hot || false;
+                }
+                
                 const response = await fetch('/api/task/play-count/start', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        target: this.playCount.target,
-                        interval: this.playCount.interval,
-                        source: this.playCount.source
-                    })
+                    body: JSON.stringify(requestBody)
                 });
                 const data = await response.json();
                 if (data.code === 200) {

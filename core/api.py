@@ -873,7 +873,7 @@ class NetEaseAPI:
         
         return user_info
 
-    async def get_discover_playlists_from_html(self, cat: str = None, order: str = "hot", limit: int = 35, offset: int = 0) -> List[Dict[str, Any]]:
+    async def get_discover_playlists_from_html(self, cat: str = "70后", hot: bool = False, limit: int = 35, offset: int = 0) -> List[Dict[str, Any]]:
         """
         从发现歌单页面HTML解析歌单列表
         
@@ -894,14 +894,10 @@ class NetEaseAPI:
         
         try:
             # 构建URL
-            url = f"{self.BASE_URL}/discover/playlist"
-            params = {
-                "order": order,
-                "limit": str(limit),
-                "offset": str(offset)
-            }
-            if cat:
-                params["cat"] = cat
+            if hot:
+                url = f"{self.BASE_URL}/discover/playlist/?order=hot&cat={cat}"
+            else:
+                url = f"{self.BASE_URL}/discover/playlist/?cat={cat}"
             
             # 直接请求HTML页面
             headers = {
@@ -912,7 +908,7 @@ class NetEaseAPI:
                 "Cookie": self.cookies
             }
             
-            response = await self.client.get(url, params=params, headers=headers)
+            response = await self.client.get(url, headers=headers)
             
             if response.status_code != 200:
                 logger.warning(f"获取发现歌单页面失败: HTTP {response.status_code}")

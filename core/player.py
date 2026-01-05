@@ -87,7 +87,7 @@ class MusicPlayer:
             logger.error(f"获取用户歌单失败: {str(e)}")
         return []
     
-    async def get_songs_from_discover_playlists(self, count: int = 500, cat: str = None, progress_callback: Optional[Callable[[int, int, str], Any]] = None) -> List[Dict]:
+    async def get_songs_from_discover_playlists(self, count: int = 500, cat: str = None, hot: bool = False, progress_callback: Optional[Callable[[int, int, str], Any]] = None) -> List[Dict]:
         """
         从发现歌单页面获取歌曲
         
@@ -100,7 +100,7 @@ class MusicPlayer:
         """
         try:
             # 获取发现页面的歌单列表
-            playlists = await self.api.get_discover_playlists_from_html(cat=cat, limit=35)
+            playlists = await self.api.get_discover_playlists_from_html(cat=cat,hot=hot, limit=35)
             if not playlists:
                 logger.warning("未获取到发现歌单")
                 return []
@@ -173,8 +173,9 @@ class MusicPlayer:
             logger.debug(f"等待时长: {play_time}秒")
             await asyncio.sleep(play_time)
         if duration is None:
-            duration = random.randint(180, 300)
-        
+            duration = 31
+        if duration >= 31:
+            duration = 31
         display_name = song_name or f"歌曲ID={song_id}"
         
         try:

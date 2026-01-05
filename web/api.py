@@ -793,6 +793,7 @@ class PlayCountTaskRequest(BaseModel):
     interval: int = 3
     source: str = "recommend"  # recommend=每日推荐, discover=发现歌单
     category: str = None  # 歌单分类（仅discover模式有效）
+    hot: bool = False  # 是否选择最热歌单（仅discover模式有效）
 
 
 @router.post("/task/play-count/start")
@@ -832,7 +833,7 @@ async def start_play_count_task(req: PlayCountTaskRequest):
                         "logType": "info"
                     })
 
-                songs = await player.get_songs_from_discover_playlists(count=req.target, cat=req.category, progress_callback=discover_progress_callback)
+                songs = await player.get_songs_from_discover_playlists(count=req.target, cat=req.category, hot=req.hot, progress_callback=discover_progress_callback)
             else:
                 songs = await player.get_songs_from_recommend()
             
@@ -949,14 +950,14 @@ async def get_task_status():
 
 
 @router.get("/discover/playlists")
-async def get_discover_playlists(cat: str = None, order: str = "hot", limit: int = 35, offset: int = 0):
+async def get_discover_playlists(cat: str = None, hot: bool = False, limit: int = 35, offset: int = 0):
     """获取发现歌单列表（从HTML解析）"""
     if not state.cookies:
         raise HTTPException(status_code=401, detail="请先登录")
     
     try:
         api = NetEaseAPI(state.cookies)
-        playlists = await api.get_discover_playlists_from_html(cat=cat, order=order, limit=limit, offset=offset)
+        playlists = await api.get_discover_playlists_from_html(cat=cat, hot=hot, limit=limit, offset=offset)
         await api.close()
         
         return {
